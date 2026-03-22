@@ -9,13 +9,13 @@ import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
 
-const account = new Hono<{ Variables: Variables }>()
+const accountAPI = new Hono<{ Variables: Variables }>()
 
 // Middleware to authenticate
-account.use('/*', authMiddleware)
+accountAPI.use('/*', authMiddleware)
 
 // GET /api/account - Get account info
-account.get('/', async (c) => {
+accountAPI.get('/', async (c) => {
   const user = c.get('user');
   const { password, updatedAt, googleId, createdAt, ...safeUser } = user;
   return c.json(safeUser);
@@ -28,7 +28,7 @@ const updateAccountSchema = z.object({
   avatarUrl: z.string().optional(),
 });
 
-account.put(
+accountAPI.put(
   '/',
   zValidator('json', updateAccountSchema, (result, c) => {
     if (!result.success) {
@@ -58,4 +58,4 @@ account.put(
   }
 )
 
-export default account
+export default accountAPI

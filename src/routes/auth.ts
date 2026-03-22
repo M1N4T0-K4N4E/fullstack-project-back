@@ -7,7 +7,7 @@ import { setCookie, getCookie } from 'hono/cookie';
 import * as jose from 'jose';
 import argon2 from 'argon2';
 
-const auth = new Hono();
+const authAPI = new Hono();
 
 const google = new Google(
   process.env.GOOGLE_CLIENT_ID!,
@@ -18,7 +18,7 @@ const google = new Google(
 const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
 // Email/Password Register
-auth.post('/register', async (c) => {
+authAPI.post('/register', async (c) => {
   try {
     const { email, password, name } = await c.req.json();
 
@@ -56,7 +56,7 @@ auth.post('/register', async (c) => {
 });
 
 // Email/Password Login
-auth.post('/login', async (c) => {
+authAPI.post('/login', async (c) => {
   try {
     const { email, password } = await c.req.json();
 
@@ -90,7 +90,7 @@ auth.post('/login', async (c) => {
   }
 });
 
-auth.get('/google', async (c) => {
+authAPI.get('/google', async (c) => {
   const state = generateState();
   const codeVerifier = generateCodeVerifier();
   const url = await google.createAuthorizationURL(state, codeVerifier, ['profile', 'email']);
@@ -114,7 +114,7 @@ auth.get('/google', async (c) => {
   return c.redirect(url.toString());
 });
 
-auth.get('/google/callback', async (c) => {
+authAPI.get('/google/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
   const storedState = getCookie(c, 'google_oauth_state');
@@ -167,7 +167,7 @@ auth.get('/google/callback', async (c) => {
   }
 });
 
-auth.get('/me', async (c) => {
+authAPI.get('/me', async (c) => {
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return c.json({ error: 'Unauthorized' }, 401);
@@ -189,4 +189,4 @@ auth.get('/me', async (c) => {
   }
 });
 
-export default auth;
+export default authAPI;
