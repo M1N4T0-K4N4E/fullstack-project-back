@@ -183,11 +183,11 @@ authAPI.get('/google/callback', zValidator('query', googleCallbackSchema), async
 
 authAPI.get('/me', async (c) => {
   const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const token = authHeader.split(' ')[1];
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
 
   try {
     const { payload } = await jose.jwtVerify(token, secret);

@@ -12,11 +12,12 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
 export const authMiddleware = createMiddleware<{ Variables: Variables }>(async (c, next) => {
   const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const token = authHeader.split(' ')[1];
+  // Accept both "Bearer <token>" and plain "<token>"
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
 
   try {
     const { payload } = await jose.jwtVerify(token, secret);
