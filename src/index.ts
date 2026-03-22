@@ -11,6 +11,8 @@ import events from './routes/events.js'
 import account from './routes/account.js'
 import tickets from './routes/tickets.js'
 import auth from './routes/auth.js'
+import upload from './routes/upload.js'
+import { serveStatic } from '@hono/node-server/serve-static'
 
 const app = new Hono()
 app.use('*', userInteractionLogger)
@@ -20,6 +22,8 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }))
+
+app.use('/uploads/*', serveStatic({ root: './' }))
 
 app.get('/', (c) => {
   return c.text('Tickale API')
@@ -31,6 +35,7 @@ app.route('/api/events', events)
 app.route('/api/account', account)
 app.route('/api/tickets', tickets)
 app.route('/api/auth', auth)
+app.route('/api/upload', upload)
 
 serve({
   fetch: app.fetch,

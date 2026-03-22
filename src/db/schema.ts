@@ -20,8 +20,12 @@ export const events = pgTable('events', {
   name: text('name').notNull(), 
   description: text('description'),
   date: timestamp('date').notNull(),
+  timeRange: text('time_range').notNull(),
   location: text('location').notNull(),
   organizerId: uuid('organizer_id').notNull().references(() => users.id),
+  views: integer('views').default(0).notNull(),
+  category: text('category').notNull(),
+  banner: text('banner'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
