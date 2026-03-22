@@ -9,7 +9,9 @@ export const users = pgTable('users', {
   phone: text('phone').unique(),
   role: text('role').default(USER_ROLES.USER),
   avatarUrl: text('avatar_url'),
+  password: text('password'),
   createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 export const events = pgTable('events', {
@@ -40,4 +42,3 @@ export const payments = pgTable('payments', {
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
-
