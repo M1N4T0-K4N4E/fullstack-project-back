@@ -1,11 +1,14 @@
 import { Hono } from 'hono';
+import { serverLogger } from '../utils/logger.js';
 import { Google, generateState, generateCodeVerifier } from 'arctic';
 import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
+import { users, blacklistedTokens } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { authMiddleware } from '../middleware/auth.js';
 import { setCookie, getCookie } from 'hono/cookie';
 import * as jose from 'jose';
 import argon2 from 'argon2';
+import { ARGON2_OPTIONS } from '../constants.js';
 
 const authAPI = new Hono();
 
@@ -36,21 +39,18 @@ authAPI.post('/register', async (c) => {
     }
 
     // Hash password
-    const hashedPassword = await argon2.hash(password, {
-      memoryCost: 16384, // 16 MiB
-      parallelism: 2,
-    });
+    const hashedPassword = await argon2.hash(password, ARGON2_OPTIONS);
 
     // Create user
     const newUser = await db.insert(users).values({
       email,
       password: hashedPassword,
       name,
-    });
-    console.log(newUser);
+    }).returning();
+    serverLogger.info('User registered successfully', { userEmail: newUser[0].email, userName: newUser[0].name });
     return c.json({ message: 'User registered successfully' }, 201);
   } catch (error) {
-    console.error('Registration error:', error);
+    serverLogger.error('Registration error', { error });
     return c.json({ error: 'Registration failed' }, 500);
   }
 });
@@ -77,7 +77,7 @@ authAPI.post('/login', async (c) => {
       return c.json({ error: 'Invalid credentials' }, 401);
     }
 
-    const jwt = await new jose.SignJWT({ sub: user.id, email: user.email, name: user.name, role: user.role })
+    const jwt = await new jose.SignJWT({ sub: user.id, email: user.email, name: user.name, role: user.role, tokenVersion: user.tokenVersion })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime('24h')
@@ -85,7 +85,7 @@ authAPI.post('/login', async (c) => {
 
     return c.json({ token: jwt, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   } catch (error) {
-    console.error('Login error:', error);
+    serverLogger.error('Login error', { error });
     return c.json({ error: 'Login failed' }, 500);
   }
 });
@@ -139,6 +139,7 @@ authAPI.get('/google/callback', async (c) => {
     });
 
     let userId: string;
+    let tokenVersion = 1;
 
     if (!existingUser) {
       const [newUser] = await db.insert(users).values({
@@ -146,14 +147,16 @@ authAPI.get('/google/callback', async (c) => {
         email: googleUser.email,
         name: googleUser.name,
         avatarUrl: googleUser.picture
-      }).returning({ id: users.id });
+      }).returning({ id: users.id, tokenVersion: users.tokenVersion });
       userId = newUser.id;
+      tokenVersion = newUser.tokenVersion;
     } else {
       userId = existingUser.id;
+      tokenVersion = existingUser.tokenVersion;
     }
 
     // Generate JWT
-    const jwt = await new jose.SignJWT({ sub: userId, email: googleUser.email })
+    const jwt = await new jose.SignJWT({ sub: userId, email: googleUser.email, tokenVersion })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime('2h')
@@ -162,7 +165,7 @@ authAPI.get('/google/callback', async (c) => {
     // Redirect to frontend with token
     return c.redirect(`${process.env.FRONTEND_URL}/auth-success?token=${jwt}`);
   } catch (error) {
-    console.error('OAuth error:', error);
+    serverLogger.error('OAuth error', { error });
     return c.json({ error: 'Authentication failed' }, 500);
   }
 });
@@ -186,6 +189,26 @@ authAPI.get('/me', async (c) => {
     return c.json(user);
   } catch (e) {
     return c.json({ error: 'Invalid token' }, 401);
+  }
+});
+
+authAPI.post('/logout', authMiddleware, async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const { payload } = await jose.jwtVerify(token, secret);
+    if (payload.exp) {
+      await db.insert(blacklistedTokens).values({
+        token,
+        expiresAt: new Date(payload.exp * 1000)
+      });
+    }
+    return c.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    serverLogger.error('Logout error', { error });
+    return c.json({ error: 'Logout failed' }, 500);
   }
 });
 

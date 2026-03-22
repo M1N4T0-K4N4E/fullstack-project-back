@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { serverLogger } from '../utils/logger.js'
 import { db } from '../db/index.js'
 import { events } from '../db/schema.js'
 import { eq, gte } from 'drizzle-orm'
@@ -67,7 +68,7 @@ eventsAPI.post(
       }).returning()
       return c.json(newEvent, 201)
     } catch (e) {
-      console.error(e)
+      serverLogger.error('Failed to create event', { error: e })
       return c.json({ error: 'Failed to create event' }, 500)
     }
   }
