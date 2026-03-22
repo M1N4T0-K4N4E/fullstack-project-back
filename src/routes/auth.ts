@@ -4,7 +4,7 @@ import { Google, generateState, generateCodeVerifier } from 'arctic';
 import { db } from '../db/index.js';
 import { users, blacklistedTokens } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, type Variables } from '../middleware/auth.js';
 import { setCookie, getCookie } from 'hono/cookie';
 import * as jose from 'jose';
 import argon2 from 'argon2';
@@ -12,7 +12,8 @@ import { ARGON2_OPTIONS, USER_ROLES } from '../constants.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
-const authAPI = new Hono();
+const authAPI = new Hono<{ Variables: Variables }>();
+
 
 const google = new Google(
   process.env.GOOGLE_CLIENT_ID!,
@@ -181,35 +182,16 @@ authAPI.get('/google/callback', zValidator('query', googleCallbackSchema), async
   }
 });
 
-authAPI.get('/me', async (c) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-
-  try {
-    const { payload } = await jose.jwtVerify(token, secret);
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, payload.sub as string)
-    });
-    if (!user) {
-      return c.json({ error: 'User not found' }, 404);
-    }
-    return c.json(user);
-  } catch (e) {
-    return c.json({ error: 'Invalid token' }, 401);
-  }
+authAPI.get('/me', authMiddleware, async (c) => {
+  return c.json(c.get('user'));
 });
 
+
 authAPI.post('/logout', authMiddleware, async (c) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader) return c.json({ error: 'Unauthorized' }, 401);
-  const token = authHeader.split(' ')[1];
+  const token = c.get('token');
+  const payload = c.get('payload');
 
   try {
-    const { payload } = await jose.jwtVerify(token, secret);
     if (payload.exp) {
       await db.insert(blacklistedTokens).values({
         token,
@@ -222,5 +204,6 @@ authAPI.post('/logout', authMiddleware, async (c) => {
     return c.json({ error: 'Logout failed' }, 500);
   }
 });
+
 
 export default authAPI;

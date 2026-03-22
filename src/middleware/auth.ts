@@ -6,6 +6,8 @@ import { eq } from 'drizzle-orm';
 
 export type Variables = {
   user: typeof users.$inferSelect;
+  token: string;
+  payload: jose.JWTPayload;
 };
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET);
@@ -48,8 +50,11 @@ export const authMiddleware = createMiddleware<{ Variables: Variables }>(async (
     }
     
     c.set('user', user);
+    c.set('token', token);
+    c.set('payload', payload);
     await next();
   } catch (e) {
     return c.json({ error: 'Invalid token' }, 401);
   }
 });
+
