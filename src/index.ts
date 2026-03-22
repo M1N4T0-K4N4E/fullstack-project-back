@@ -3,6 +3,9 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serverLogger, userInteractionLogger } from './utils/logger.js'
+import { db } from './db/index.js'
+import { blacklistedTokens } from './db/schema.js'
+import { lt } from 'drizzle-orm'
 import roles from './routes/roles.js'
 import events from './routes/events.js'
 import account from './routes/account.js'
@@ -35,3 +38,13 @@ serve({
 }, (info) => {
   serverLogger.info(`Server is running on http://localhost:${info.port}`)
 })
+
+// Background job to clean up expired blacklisted tokens every 12 hours
+setInterval(async () => {
+  try {
+    await db.delete(blacklistedTokens).where(lt(blacklistedTokens.expiresAt, new Date()));
+    serverLogger.info('Cleaned up expired blacklisted tokens scheduling job completed');
+  } catch (error) {
+    serverLogger.error('Failed to clean up blacklisted tokens', { error });
+  }
+}, 1000 * 60 * 60 * 12);
