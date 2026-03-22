@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, timestamp, uuid, jsonb } from 'drizzle-orm/pg-core';
 import { PAYMENT_STATUS, TICKET_STATUS, USER_ROLES } from '../constants.js';
 
 export const users = pgTable('users', {
@@ -10,6 +10,7 @@ export const users = pgTable('users', {
   role: text('role').default(USER_ROLES.USER),
   avatarUrl: text('avatar_url'),
   password: text('password'),
+  tokenVersion: integer('token_version').default(1).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -41,4 +42,30 @@ export const payments = pgTable('payments', {
   status: text('status').default(PAYMENT_STATUS.PENDING).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const serverLogs = pgTable('server_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  level: text('level').notNull(),
+  message: text('message').notNull(),
+  meta: jsonb('meta'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const userInteractions = pgTable('user_interactions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull(), // text because it can be 'guest'
+  userEmail: text('user_email').notNull(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
+  status: integer('status').notNull(),
+  durationMs: integer('duration_ms').notNull(),
+  ip: text('ip'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const blacklistedTokens = pgTable('blacklisted_tokens', {
+  token: text('token').primaryKey(),
+  expiresAt: timestamp('expires_at').notNull(),
 });
