@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
-import { USER_ROLES } from '../constants.js'
+import { USER_ROLES, EVENT_STATUS } from '../constants.js'
 
 const eventsAPI = new Hono<{ Variables: Variables }>()
 
@@ -31,6 +31,11 @@ eventsAPI.get('/:id', async (c) => {
       where: eq(events.id, id)
     })
     if (!event) return c.json({ error: 'Event not found' }, 404)
+
+    await db.update(events)
+      .set({ views: event.views + 1 })
+      .where(eq(events.id, id))
+
     return c.json(event)
   } catch (e) {
     return c.json({ error: 'Failed to fetch event detail' }, 500)
@@ -42,7 +47,11 @@ const createEventSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   date: z.coerce.date(),
-  location: z.string().min(1),
+  timeRange: z.string().min(1),
+  venue: z.string().min(1),
+  address: z.string().min(1),
+  category: z.string().min(1),
+  banner: z.string().optional(),
 })
 
 eventsAPI.post(
@@ -57,13 +66,17 @@ eventsAPI.post(
       return c.json({ error: 'Forbidden. Only organizers or admins can create events.' }, 403)
     }
 
-    const { name, description, date, location } = c.req.valid('json')
+    const { name, description, date, timeRange, venue, address, category, banner } = c.req.valid('json')
     try {
       const [newEvent] = await db.insert(events).values({
         name,
         description,
         date,
-        location,
+        timeRange,
+        venue,
+        address,
+        category,
+        banner,
         organizerId: user.id
       }).returning()
       return c.json(newEvent, 201)
@@ -79,7 +92,12 @@ const updateEventSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   date: z.coerce.date().optional(),
-  location: z.string().optional(),
+  timeRange: z.string().optional(),
+  venue: z.string().optional(),
+  address: z.string().optional(),
+  category: z.string().optional(),
+  banner: z.string().optional(),
+  status: z.enum([EVENT_STATUS.DRAFT, EVENT_STATUS.PUBLISHED, EVENT_STATUS.CANCELLED]),
 })
 
 eventsAPI.put(
@@ -102,14 +120,19 @@ eventsAPI.put(
         return c.json({ error: 'Forbidden. You do not have permission to update this event.' }, 403)
       }
 
-      const { name, description, date, location } = c.req.valid('json')
+      const { name, description, date, timeRange, venue, address, category, banner, status } = c.req.valid('json')
       
       const [updatedEvent] = await db.update(events)
         .set({ 
           name, 
           description, 
           date, 
-          location, 
+          timeRange, 
+          venue, 
+          address, 
+          category, 
+          banner, 
+          status,
           updatedAt: new Date() 
         })
         .where(eq(events.id, id))

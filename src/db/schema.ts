@@ -1,5 +1,5 @@
-import { pgTable, text, integer, timestamp, uuid, jsonb } from 'drizzle-orm/pg-core';
-import { PAYMENT_STATUS, TICKET_STATUS, USER_ROLES } from '../constants.js';
+import { pgTable, text, integer, timestamp, uuid, jsonb, boolean } from 'drizzle-orm/pg-core';
+import { PAYMENT_STATUS, TICKET_STATUS, USER_ROLES, EVENT_STATUS } from '../constants.js';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -21,11 +21,13 @@ export const events = pgTable('events', {
   description: text('description'),
   date: timestamp('date').notNull(),
   timeRange: text('time_range').notNull(),
-  location: text('location').notNull(),
+  venue: text('venue').notNull(),
+  address: text('address').notNull(),
   organizerId: uuid('organizer_id').notNull().references(() => users.id),
   views: integer('views').default(0).notNull(),
   category: text('category').notNull(),
   banner: text('banner'),
+  status: text('status').default(EVENT_STATUS.DRAFT).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -34,7 +36,12 @@ export const tickets = pgTable('tickets', {
   id: uuid('id').primaryKey().defaultRandom(),
   eventId: uuid('event_id').notNull().references(() => events.id),
   userId: uuid('user_id').notNull().references(() => users.id),
-  status: text('status').default(TICKET_STATUS.PURCHASED).notNull(),
+  ticketType: text('ticket_type'),
+  price: integer('price'),
+  quantity: integer('quantity').default(1),
+  status: text('status').default(TICKET_STATUS.VALID).notNull(),
+  qrCode: text('qr_code').unique(),
+  purchasedAt: timestamp('purchased_at').defaultNow(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
