@@ -48,7 +48,7 @@ eventsAPI.get('/:id', async (c) => {
 // POST /api/events - Create an event
 const createEventSchema = z.object({
   name: z.string().min(1),
-  description: z.string().optional(),
+  description: z.string(),
   date: z.coerce.date(),
   endDate: z.coerce.date(),
   venue: z.string().min(1),
@@ -70,12 +70,17 @@ eventsAPI.post(
     }
 
     const { name, description, date, endDate, venue, address, category, banner } = c.req.valid('json')
+    
+    const durationMs = endDate.getTime() - date.getTime();
+    const timeRange = durationMs / (1000 * 60); // minutes
+
     try {
       const [newEvent] = await db.insert(events).values({
         name,
         description,
         date,
         endDate,
+        timeRange,
         venue,
         address,
         category,
@@ -95,7 +100,8 @@ const updateEventSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
   date: z.coerce.date().optional(),
-  timeRange: z.string().optional(),
+  endDate: z.coerce.date().optional(),
+  timeRange: z.number().optional(),
   venue: z.string().optional(),
   address: z.string().optional(),
   category: z.string().optional(),
@@ -123,13 +129,27 @@ eventsAPI.put(
         return c.json({ error: 'Forbidden. You do not have permission to update this event.' }, 403)
       }
 
-      const { name, description, date, timeRange, venue, address, category, banner, status } = c.req.valid('json')
+      const { name, description, date, endDate, venue, address, category, banner, status } = c.req.valid('json')
       
+      let timeRange = event.timeRange
+
+      if (date && endDate) {
+        const durationMs = endDate.getTime() - date.getTime();
+        timeRange = durationMs / (1000 * 60); // minutes
+      } else if (date) {
+        const durationMs = event.endDate.getTime() - date.getTime();
+        timeRange = durationMs / (1000 * 60); // minutes
+      } else if (endDate) {
+        const durationMs = endDate.getTime() - event.date.getTime();
+        timeRange = durationMs / (1000 * 60); // minutes
+      }
+
       const [updatedEvent] = await db.update(events)
         .set({ 
           name, 
           description, 
           date, 
+          endDate,
           timeRange, 
           venue, 
           address, 
