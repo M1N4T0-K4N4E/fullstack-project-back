@@ -111,6 +111,55 @@ ticketsAPI.post(
   }
 )
 
+// PATCH /api/tickets/:id - Update ticket status
+const updateTicketStatusSchema = z.object({
+  status: z.enum([TICKET_STATUS.VALID, TICKET_STATUS.CANCELLED, TICKET_STATUS.USED, TICKET_STATUS.REFUNDED])
+})
+
+ticketsAPI.patch(
+  '/:id',
+  zValidator('json', updateTicketStatusSchema, (result, c) => {
+    if (!result.success) return c.json({ error: 'Invalid input', details: result.error.issues }, 400)
+  }),
+  async (c) => {
+  const id = c.req.param('id')
+  const user = c.get('user')
+  const { status } = c.req.valid('json')
+
+  try {
+    const [result] = await db.select({
+      ticket: tickets,
+      event: events
+    })
+    .from(tickets)
+    .innerJoin(events, eq(tickets.eventId, events.id))
+    .where(eq(tickets.id, id))
+
+    if (!result) return c.json({ error: 'Ticket not found' }, 404)
+
+    // Check permissions
+    if (
+      user.role !== USER_ROLES.ADMIN &&
+      result.ticket.userId !== user.id &&
+      result.event.organizerId !== user.id
+    ) {
+      return c.json({ error: 'Forbidden. You do not have permission to update this ticket.' }, 403)
+    }
+
+    const [updatedTicket] = await db.update(tickets)
+      .set({ 
+        status: status,
+        updatedAt: new Date()
+      })
+      .where(eq(tickets.id, id))
+      .returning()
+
+    return c.json({ message: 'Ticket status updated', ticket: updatedTicket })
+  } catch (e) {
+    return c.json({ error: 'Failed to update ticket status' }, 500)
+  }
+})
+
 // DELETE /api/tickets/:id - Cancel/Refund ticket
 ticketsAPI.delete('/:id', async (c) => {
   const id = c.req.param('id')
