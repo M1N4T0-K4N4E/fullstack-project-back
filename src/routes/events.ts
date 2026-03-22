@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { serverLogger } from '../utils/logger.js'
 import { db } from '../db/index.js'
-import { events } from '../db/schema.js'
+import { events, ticketTypes } from '../db/schema.js'
 import { eq, gte } from 'drizzle-orm'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
@@ -18,7 +18,7 @@ eventsAPI.get('/', async (c) => {
     const allEvents = await db.query.events.findMany({
       where: organizerId 
         ? eq(events.organizerId, organizerId) 
-        : gte(events.date, new Date())
+        : gte(events.startDate, new Date())
     })
     return c.json(allEvents)
   } catch (e) {
@@ -39,7 +39,11 @@ eventsAPI.get('/:id', async (c) => {
       .set({ views: event.views + 1 })
       .where(eq(events.id, id))
 
-    return c.json(event)
+    const eventTicketTypes = await db.query.ticketTypes.findMany({
+      where: eq(ticketTypes.eventId, id)
+    })
+
+    return c.json({ event, eventTicketTypes })
   } catch (e) {
     return c.json({ error: 'Failed to fetch event detail' }, 500)
   }
@@ -47,9 +51,9 @@ eventsAPI.get('/:id', async (c) => {
 
 // POST /api/events - Create an event
 const createEventSchema = z.object({
-  name: z.string().min(1),
+  title: z.string().min(1),
   description: z.string(),
-  date: z.coerce.date(),
+  startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   venue: z.string().min(1),
   address: z.string().min(1),
@@ -69,16 +73,16 @@ eventsAPI.post(
       return c.json({ error: 'Forbidden. Only organizers or admins can create events.' }, 403)
     }
 
-    const { name, description, date, endDate, venue, address, category, banner } = c.req.valid('json')
+    const { title, description, startDate, endDate, venue, address, category, banner } = c.req.valid('json')
     
-    const durationMs = endDate.getTime() - date.getTime();
+    const durationMs = endDate.getTime() - startDate.getTime();
     const timeRange = durationMs / (1000 * 60); // minutes
 
     try {
       const [newEvent] = await db.insert(events).values({
-        name,
+        title,
         description,
-        date,
+        startDate,
         endDate,
         timeRange,
         venue,
@@ -97,9 +101,9 @@ eventsAPI.post(
 
 // PUT /api/events/:id - Update an event
 const updateEventSchema = z.object({
-  name: z.string().optional(),
+  title: z.string().optional(),
   description: z.string().optional(),
-  date: z.coerce.date().optional(),
+  startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
   timeRange: z.number().optional(),
   venue: z.string().optional(),
@@ -129,26 +133,26 @@ eventsAPI.put(
         return c.json({ error: 'Forbidden. You do not have permission to update this event.' }, 403)
       }
 
-      const { name, description, date, endDate, venue, address, category, banner, status } = c.req.valid('json')
+      const { title, description, startDate, endDate, venue, address, category, banner, status } = c.req.valid('json')
       
       let timeRange = event.timeRange
 
-      if (date && endDate) {
-        const durationMs = endDate.getTime() - date.getTime();
+      if (startDate && endDate) {
+        const durationMs = endDate.getTime() - startDate.getTime();
         timeRange = durationMs / (1000 * 60); // minutes
-      } else if (date) {
-        const durationMs = event.endDate.getTime() - date.getTime();
+      } else if (startDate) {
+        const durationMs = event.endDate.getTime() - startDate.getTime();
         timeRange = durationMs / (1000 * 60); // minutes
       } else if (endDate) {
-        const durationMs = endDate.getTime() - event.date.getTime();
+        const durationMs = endDate.getTime() - event.startDate.getTime();
         timeRange = durationMs / (1000 * 60); // minutes
       }
 
       const [updatedEvent] = await db.update(events)
         .set({ 
-          name, 
+          title, 
           description, 
-          date, 
+          startDate, 
           endDate,
           timeRange, 
           venue, 
