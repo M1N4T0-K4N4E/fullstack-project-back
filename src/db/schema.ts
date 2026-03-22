@@ -17,9 +17,9 @@ export const users = pgTable('users', {
 
 export const events = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(), 
+  title: text('title').notNull(), 
   description: text('description'),
-  date: timestamp('date').notNull(),
+  startDate: timestamp('start_date').notNull(),
   endDate: timestamp('end_date').notNull(),
   timeRange: integer('time_range').notNull(),
   venue: text('venue').notNull(),
