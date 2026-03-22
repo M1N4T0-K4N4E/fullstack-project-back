@@ -11,11 +11,14 @@ import { USER_ROLES, EVENT_STATUS } from '../constants.js'
 
 const eventsAPI = new Hono<{ Variables: Variables }>()
 
-// GET /api/events - List all current events
+// GET /api/events - List all current events (optionally filtered by organizer)
 eventsAPI.get('/', async (c) => {
+  const organizerId = c.req.query('organizerId')
   try {
     const allEvents = await db.query.events.findMany({
-      where: gte(events.date, new Date())
+      where: organizerId 
+        ? eq(events.organizerId, organizerId) 
+        : gte(events.date, new Date())
     })
     return c.json(allEvents)
   } catch (e) {
@@ -47,7 +50,7 @@ const createEventSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   date: z.coerce.date(),
-  timeRange: z.string().min(1),
+  endDate: z.coerce.date(),
   venue: z.string().min(1),
   address: z.string().min(1),
   category: z.string().min(1),
@@ -66,13 +69,13 @@ eventsAPI.post(
       return c.json({ error: 'Forbidden. Only organizers or admins can create events.' }, 403)
     }
 
-    const { name, description, date, timeRange, venue, address, category, banner } = c.req.valid('json')
+    const { name, description, date, endDate, venue, address, category, banner } = c.req.valid('json')
     try {
       const [newEvent] = await db.insert(events).values({
         name,
         description,
         date,
-        timeRange,
+        endDate,
         venue,
         address,
         category,
