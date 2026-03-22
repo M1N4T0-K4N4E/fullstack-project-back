@@ -16,6 +16,14 @@ export const PAYMENT_STATUS = {
   FAILED: 'failed',
 } as const;
 
+export const ARGON2_OPTIONS = {
+  memoryCost: 16384,
+  parallelism: 2,
+  timeCost: 3,
+} as const;
+
+export const PASSWORD_MIN_LENGTH = 8;
+
 export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
 export type TicketStatus = typeof TICKET_STATUS[keyof typeof TICKET_STATUS];
 export type PaymentStatus = typeof PAYMENT_STATUS[keyof typeof PAYMENT_STATUS];
