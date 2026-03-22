@@ -8,7 +8,9 @@ import { authMiddleware } from '../middleware/auth.js';
 import { setCookie, getCookie } from 'hono/cookie';
 import * as jose from 'jose';
 import argon2 from 'argon2';
-import { ARGON2_OPTIONS } from '../constants.js';
+import { ARGON2_OPTIONS, USER_ROLES } from '../constants.js';
+import { z } from 'zod';
+import { zValidator } from '@hono/zod-validator';
 
 const authAPI = new Hono();
 
@@ -20,14 +22,27 @@ const google = new Google(
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
-// Email/Password Register
-authAPI.post('/register', async (c) => {
-  try {
-    const { email, password, name } = await c.req.json();
+const registerSchema = z.object({
+  email: z.email('Invalid email format'),
+  password: z.string().min(8, 'Password must be at least 8 characters long'),
+  name: z.string().min(1, 'Name is required'),
+  role: z.enum([USER_ROLES.USER, USER_ROLES.ORGANIZER]).default(USER_ROLES.USER),
+});
 
-    if (!email || !password || !name) {
-      return c.json({ error: 'Missing required fields' }, 400);
-    }
+const loginSchema = z.object({
+  email: z.email('Invalid email format'),
+  password: z.string().min(8, 'Password must be at least 8 characters long'),
+});
+
+const googleCallbackSchema = z.object({
+  code: z.string().min(1, 'Code is required'),
+  state: z.string().min(1, 'State is required'),
+});
+
+// Email/Password Register
+authAPI.post('/register', zValidator('json', registerSchema), async (c) => {
+  try {
+    const { email, password, name, role } = c.req.valid('json');
 
     // Check if user exists
     const existingUser = await db.query.users.findFirst({
@@ -46,6 +61,7 @@ authAPI.post('/register', async (c) => {
       email,
       password: hashedPassword,
       name,
+      role,
     }).returning();
     serverLogger.info('User registered successfully', { userEmail: newUser[0].email, userName: newUser[0].name });
     return c.json({ message: 'User registered successfully' }, 201);
@@ -56,13 +72,9 @@ authAPI.post('/register', async (c) => {
 });
 
 // Email/Password Login
-authAPI.post('/login', async (c) => {
+authAPI.post('/login', zValidator('json', loginSchema), async (c) => {
   try {
-    const { email, password } = await c.req.json();
-
-    if (!email || !password) {
-      return c.json({ error: 'Missing required fields' }, 400);
-    }
+    const { email, password } = c.req.valid('json');
 
     const user = await db.query.users.findFirst({
       where: eq(users.email, email)
@@ -114,13 +126,12 @@ authAPI.get('/google', async (c) => {
   return c.redirect(url.toString());
 });
 
-authAPI.get('/google/callback', async (c) => {
-  const code = c.req.query('code');
-  const state = c.req.query('state');
+authAPI.get('/google/callback', zValidator('query', googleCallbackSchema), async (c) => {
+  const { code, state } = c.req.valid('query');
   const storedState = getCookie(c, 'google_oauth_state');
   const codeVerifier = getCookie(c, 'google_code_verifier');
 
-  if (!code || !state || state !== storedState || !codeVerifier) {
+  if (state !== storedState || !codeVerifier) {
     return c.json({ error: 'Invalid state or code' }, 400);
   }
 
