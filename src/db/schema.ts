@@ -20,16 +20,30 @@ export const events = pgTable('events', {
   name: text('name').notNull(), 
   description: text('description'),
   date: timestamp('date').notNull(),
+  endDate: timestamp('end_date'),
   timeRange: text('time_range').notNull(),
   venue: text('venue').notNull(),
   address: text('address').notNull(),
   organizerId: uuid('organizer_id').notNull().references(() => users.id),
+  organizerName: text('organizer_name'),
   views: integer('views').default(0).notNull(),
   category: text('category').notNull(),
   banner: text('banner'),
   status: text('status').default(EVENT_STATUS.DRAFT).notNull(),
+  featured: boolean('featured').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const ticketTypes = pgTable('ticket_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventId: uuid('event_id').notNull().references(() => events.id),
+  name: text('name').notNull(),
+  price: integer('price').notNull(),
+  quantity: integer('quantity').notNull(),
+  available: integer('available').notNull(),
+  isEarlyBird: boolean('is_early_bird').default(false),
+  earlyBirdEndDate: timestamp('early_bird_end_date'),
 });
 
 export const tickets = pgTable('tickets', {

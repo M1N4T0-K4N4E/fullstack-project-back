@@ -101,7 +101,7 @@ ticketsAPI.post(
       const [newTicket] = await db.insert(tickets).values({
         userId: user.id,
         eventId,
-        status: TICKET_STATUS.PURCHASED
+        status: TICKET_STATUS.VALID
       }).returning()
       
       return c.json(newTicket, 201)
