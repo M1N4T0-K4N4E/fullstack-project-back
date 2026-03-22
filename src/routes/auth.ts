@@ -5,6 +5,7 @@ import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { setCookie, getCookie } from 'hono/cookie';
 import * as jose from 'jose';
+import argon2 from 'argon2';
 
 const auth = new Hono();
 
@@ -15,6 +16,79 @@ const google = new Google(
 );
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+
+// Email/Password Register
+auth.post('/register', async (c) => {
+  try {
+    const { email, password, name } = await c.req.json();
+
+    if (!email || !password || !name) {
+      return c.json({ error: 'Missing required fields' }, 400);
+    }
+
+    // Check if user exists
+    const existingUser = await db.query.users.findFirst({
+      where: eq(users.email, email)
+    });
+
+    if (existingUser) {
+      return c.json({ error: 'User already exists' }, 400);
+    }
+
+    // Hash password
+    const hashedPassword = await argon2.hash(password, {
+      memoryCost: 16384, // 16 MiB
+      parallelism: 2,
+    });
+
+    // Create user
+    const newUser = await db.insert(users).values({
+      email,
+      password: hashedPassword,
+      name,
+    });
+    console.log(newUser);
+    return c.json({ message: 'User registered successfully' }, 201);
+  } catch (error) {
+    console.error('Registration error:', error);
+    return c.json({ error: 'Registration failed' }, 500);
+  }
+});
+
+// Email/Password Login
+auth.post('/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json();
+
+    if (!email || !password) {
+      return c.json({ error: 'Missing required fields' }, 400);
+    }
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, email)
+    });
+
+    if (!user || !user.password) {
+      return c.json({ error: 'Invalid credentials' }, 401);
+    }
+
+    const isValid = await argon2.verify(user.password, password);
+    if (!isValid) {
+      return c.json({ error: 'Invalid credentials' }, 401);
+    }
+
+    const jwt = await new jose.SignJWT({ sub: user.id, email: user.email, name: user.name, role: user.role })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('24h')
+      .sign(secret);
+
+    return c.json({ token: jwt, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+  } catch (error) {
+    console.error('Login error:', error);
+    return c.json({ error: 'Login failed' }, 500);
+  }
+});
 
 auth.get('/google', async (c) => {
   const state = generateState();
