@@ -13,9 +13,9 @@ import type { Variables } from '../middleware/auth.js'
 import { ARGON2_OPTIONS, PASSWORD_MIN_LENGTH } from '../constants.js'
 
 const accountAPI = new Hono<{ Variables: Variables }>()
+const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
-// Middleware to authenticate
-accountAPI.use('/*', authMiddleware)
+accountAPI.use(authMiddleware)
 
 // GET /api/account - Get account info
 accountAPI.get('/', async (c) => {
@@ -27,7 +27,6 @@ accountAPI.get('/', async (c) => {
 // PUT /api/account - Update account info
 const updateAccountSchema = z.object({
   name: z.string().optional(),
-  phone: z.string().optional(),
   avatarUrl: z.string().optional(),
 });
 
@@ -35,33 +34,43 @@ accountAPI.put(
   '/',
   zValidator('json', updateAccountSchema, (result, c) => {
     if (!result.success) {
-      return c.json({ error: 'Invalid input', details: result.error.issues }, 400);
+      return c.json({ error: 'Invalid input' }, 400);
     }
   }),
   async (c) => {
     const user = c.get('user');
-    const { name, phone, avatarUrl } = c.req.valid('json');
+    const { name, avatarUrl } = c.req.valid('json');
     
     try {
       const [updatedUser] = await db.update(users)
         .set({
           name: name !== undefined ? name : user.name,
-          phone: phone !== undefined ? phone : user.phone,
           avatarUrl: avatarUrl !== undefined ? avatarUrl : user.avatarUrl,
         })
         .where(eq(users.id, user.id))
         .returning();
         
       const { password, updatedAt, googleId, createdAt, ...safeUser } = updatedUser;
-      return c.json({ message: 'Account updated successfully', user: safeUser });
+      
+      const jwt = await new jose.SignJWT({
+        sub: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        role: updatedUser.role,
+      })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .setExpirationTime('24h')
+        .sign(secret);
+
+      serverLogger.info('Account updated successfully', { user: updatedUser });
+      return c.json({ message: 'Account updated successfully', token: jwt }, 200);
     } catch (e) {
       serverLogger.error('Account update error', { error: e });
       return c.json({ error: 'Failed to update account' }, 500);
     }
   }
 )
-
-const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(PASSWORD_MIN_LENGTH),
@@ -71,7 +80,7 @@ const changePasswordSchema = z.object({
 accountAPI.put(
   '/password',
   zValidator('json', changePasswordSchema, (result, c) => {
-    if (!result.success) return c.json({ error: 'Invalid input', details: result.error.issues }, 400);
+    if (!result.success) return c.json({ error: 'Invalid input' }, 400);
   }),
   async (c) => {
     const user = c.get('user');
@@ -87,12 +96,9 @@ accountAPI.put(
 
       const hashedNewPassword = await argon2.hash(newPassword, ARGON2_OPTIONS);
 
-      const nextTokenVersion = user.tokenVersion + 1;
-
       await db.update(users)
         .set({
           password: hashedNewPassword,
-          tokenVersion: nextTokenVersion,
           updatedAt: new Date(),
         })
         .where(eq(users.id, user.id));
@@ -102,14 +108,13 @@ accountAPI.put(
         email: user.email,
         name: user.name,
         role: user.role,
-        tokenVersion: nextTokenVersion,
       })
         .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
         .setExpirationTime('24h')
         .sign(secret);
 
-      return c.json({ message: 'Password updated successfully', token: jwt });
+      return c.json({ message: 'Password updated successfully', token: jwt }, 200);
     } catch (e) {
       serverLogger.error('Password change error', { error: e });
       return c.json({ error: 'Failed to change password' }, 500);
