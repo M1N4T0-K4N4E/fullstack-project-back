@@ -20,14 +20,22 @@ const updateRoleSchema = z.object({
 
 // GET /api/roles - List all roles
 rolesAPI.get('/', (c) => {
-  return c.json({ message: 'List all roles', roles: USER_ROLES })
+  try {
+    serverLogger.info('Role list requested')
+    return c.json({ message: 'List all roles', roles: USER_ROLES }, 200)
+  } catch (error) {
+    serverLogger.error('Role list error', { error })
+    return c.json({ error: 'Role list failed' }, 500)
+  }
 })
 
 // PUT /api/roles/ - Update a role
 rolesAPI.put(
   '/',
   zValidator('json', updateRoleSchema, (result, c) => {
-    if (!result.success) return c.json({ error: 'Invalid input' }, 400)
+    if (!result.success) {
+      return c.json({ error: 'Invalid input' }, 400)
+    }
   }),
   async (c) => {
   const user = c.get('user')
@@ -35,9 +43,25 @@ rolesAPI.put(
   if (user.role !== USER_ROLES.ADMIN) {
     return c.json({ error: 'Forbidden' }, 403)
   }
-  
+
   try {
     const { id, role } = c.req.valid('json')
+
+    const targetUser = await db.query.users.findFirst({
+      where: eq(users.id, id)
+    })
+
+    if (!targetUser) {
+      return c.json({ error: 'User not found' }, 404)
+    }
+
+    if (targetUser.role === USER_ROLES.ADMIN) {
+      return c.json({ error: 'Forbidden. You cannot update admin role' }, 403)
+    }
+
+    if (user.id === id) {
+      return c.json({ error: 'Forbidden. You cannot update your role' }, 403)
+    }
 
     await db.update(users)
       .set({
