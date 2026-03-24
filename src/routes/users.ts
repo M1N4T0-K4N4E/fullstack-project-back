@@ -108,11 +108,11 @@ usersAPI.post('/timeout/:id', zValidator('json', timeoutSchema), async (c) => {
       .where(eq(users.id, id))
       .returning()
     
-    serverLogger.info('User fetched successfully', { userId: id })
-    return c.json({ message: 'User fetched successfully', user: updatedUser }, 200)
+    serverLogger.info('Timeout user successfully', { userId: id })
+    return c.json({ message: 'Timeout user successfully', user: updatedUser }, 200)
   } catch (e) {
-    serverLogger.error('Failed to fetch user by id', { error: e })
-    return c.json({ error: 'Failed to fetch user by id' }, 500)
+    serverLogger.error('Failed to timeout user', { error: e })
+    return c.json({ error: 'Failed to timeout user' }, 500)
   }
 })
 
