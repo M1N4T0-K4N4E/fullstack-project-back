@@ -8,7 +8,7 @@ import { authMiddleware, type Variables } from '../middleware/auth.js';
 import { setCookie, getCookie } from 'hono/cookie';
 import * as jose from 'jose';
 import argon2 from 'argon2';
-import { ARGON2_OPTIONS, JWT_EXPIRATION } from '../constants.js';
+import { ARGON2_OPTIONS, JWT_EXPIRATION, PASSWORD_MIN_LENGTH } from '../constants.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import redis from '../utils/redis.js';
@@ -83,7 +83,13 @@ authAPI.post('/register', zValidator('json', registerSchema), async (c) => {
     });
 
     if (existingUser) {
+      serverLogger.error('User already exists', { userEmail: email });
       return c.json({ error: 'User already exists' }, 400);
+    }
+
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      serverLogger.error('Password is too short', { userEmail: email, passwordLength: password.length });
+      return c.json({ error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters long` }, 400);
     }
 
     // Hash password

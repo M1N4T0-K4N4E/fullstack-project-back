@@ -15,7 +15,7 @@ export const ARGON2_OPTIONS = {
   timeCost: 3,
 } as const;
 
-export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MIN_LENGTH = 15;
 
 export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
 export type FileUploadType = typeof FILE_UPLOAD_TYPE[keyof typeof FILE_UPLOAD_TYPE];
