@@ -1,8 +1,9 @@
 import { createMiddleware } from 'hono/factory';
 import * as jose from 'jose';
 import { db } from '../db/index.js';
-import { users, blacklistedTokens } from '../db/schema.js';
+import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
+import redis from '../utils/redis.js';
 
 export type Variables = {
   user: typeof users.$inferSelect;
@@ -29,12 +30,10 @@ export const authMiddleware = createMiddleware<{ Variables: Variables }>(async (
       return c.json({ error: 'Invalid token' }, 401);
     }
 
-    const isBlacklisted = await db.query.blacklistedTokens.findFirst({
-      where: eq(blacklistedTokens.token, token)
-    });
+    const isBlacklisted = await redis.get(token);
 
     if (isBlacklisted) {
-      return c.json({ error: 'Token is invalid' }, 401);
+      return c.json({ error: 'Invalid token' }, 401);
     }
 
     const user = await db.query.users.findFirst({
@@ -43,10 +42,6 @@ export const authMiddleware = createMiddleware<{ Variables: Variables }>(async (
 
     if (!user) {
       return c.json({ error: 'User not found' }, 404);
-    }
-    
-    if (payload.tokenVersion && payload.tokenVersion !== user.tokenVersion) {
-      return c.json({ error: 'Session expired due to password change' }, 401);
     }
     
     c.set('user', user);
