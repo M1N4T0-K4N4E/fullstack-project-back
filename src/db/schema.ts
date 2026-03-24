@@ -1,73 +1,42 @@
 import { pgTable, text, integer, timestamp, uuid, jsonb, boolean } from 'drizzle-orm/pg-core';
-import { PAYMENT_STATUS, TICKET_STATUS, USER_ROLES, EVENT_STATUS } from '../constants.js';
+import { relations } from 'drizzle-orm';
+import { USER_ROLES } from '../constants.js';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   googleId: text('google_id').unique(),
   email: text('email').notNull().unique(),
+  password: text('password'),
   name: text('name'),
-  phone: text('phone').unique(),
   role: text('role').default(USER_ROLES.USER),
   avatarUrl: text('avatar_url'),
-  password: text('password'),
-  tokenVersion: integer('token_version').default(1).notNull(),
+  timeoutStatus: boolean('timeout_status').default(false),
+  timeoutEnd: timestamp('timeout_end'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-export const events = pgTable('events', {
+export const posts = pgTable('posts', {
   id: uuid('id').primaryKey().defaultRandom(),
-  title: text('title').notNull(), 
-  description: text('description'),
-  startDate: timestamp('start_date').notNull(),
-  endDate: timestamp('end_date').notNull(),
-  timeRange: integer('time_range').notNull(),
-  venue: text('venue').notNull(),
-  address: text('address').notNull(),
-  organizerId: uuid('organizer_id').notNull().references(() => users.id),
-  organizerName: text('organizer_name'),
-  views: integer('views').default(0).notNull(),
-  category: text('category').notNull(),
-  banner: text('banner'),
-  status: text('status').default(EVENT_STATUS.DRAFT).notNull(),
-  featured: boolean('featured').default(false).notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
-
-export const ticketTypes = pgTable('ticket_types', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  eventId: uuid('event_id').notNull().references(() => events.id),
-  name: text('name').notNull(),
-  price: integer('price').notNull(),
-  quantity: integer('quantity').notNull(),
-  available: integer('available').notNull(),
-  isEarlyBird: boolean('is_early_bird').default(false),
-  earlyBirdEndDate: timestamp('early_bird_end_date'),
-});
-
-export const tickets = pgTable('tickets', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  eventId: uuid('event_id').notNull().references(() => events.id),
   userId: uuid('user_id').notNull().references(() => users.id),
-  ticketType: text('ticket_type'),
-  price: integer('price'),
-  quantity: integer('quantity').default(1),
-  status: text('status').default(TICKET_STATUS.VALID).notNull(),
-  qrCode: text('qr_code').unique(),
-  purchasedAt: timestamp('purchased_at').defaultNow(),
+  title: text('title').notNull(), 
+  context: text('context').notNull(),
+  picture: text('picture').notNull(),
+  like: integer('like').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-export const payments = pgTable('payments', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  ticketId: uuid('ticket_id').notNull().references(() => tickets.id),
-  amount: integer('amount').notNull(),
-  status: text('status').default(PAYMENT_STATUS.PENDING).notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
+export const usersRelations = relations(users, ({ many }) => ({
+  posts: many(posts),
+}));
+
+export const postsRelations = relations(posts, ({ one }) => ({
+  user: one(users, {
+    fields: [posts.userId],
+    references: [users.id],
+  }),
+}));
 
 export const serverLogs = pgTable('server_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -79,7 +48,7 @@ export const serverLogs = pgTable('server_logs', {
 
 export const userInteractions = pgTable('user_interactions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  userId: text('user_id').notNull(), // text because it can be 'guest'
+  userId: text('user_id').notNull(), // can be 'guest'
   userEmail: text('user_email').notNull(),
   method: text('method').notNull(),
   path: text('path').notNull(),
@@ -88,9 +57,4 @@ export const userInteractions = pgTable('user_interactions', {
   ip: text('ip'),
   userAgent: text('user_agent'),
   createdAt: timestamp('created_at').defaultNow(),
-});
-
-export const blacklistedTokens = pgTable('blacklisted_tokens', {
-  token: text('token').primaryKey(),
-  expiresAt: timestamp('expires_at').notNull(),
 });
