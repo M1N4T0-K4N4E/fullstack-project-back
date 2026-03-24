@@ -26,7 +26,7 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
 const registerSchema = z.object({
   email: z.email('Invalid email format'),
-  password: z.string().min(8, 'Password must be at least 8 characters long'),
+  password: z.string().min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters long`),
   name: z.string().min(1, 'Name is required'),
 });
 
@@ -85,11 +85,6 @@ authAPI.post('/register', zValidator('json', registerSchema), async (c) => {
     if (existingUser) {
       serverLogger.error('User already exists', { userEmail: email });
       return c.json({ error: 'User already exists' }, 400);
-    }
-
-    if (password.length < PASSWORD_MIN_LENGTH) {
-      serverLogger.error('Password is too short', { userEmail: email, passwordLength: password.length });
-      return c.json({ error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters long` }, 400);
     }
 
     // Hash password
