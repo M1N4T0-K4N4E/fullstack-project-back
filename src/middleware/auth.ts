@@ -43,6 +43,16 @@ export const authMiddleware = createMiddleware<{ Variables: Variables }>(async (
     if (!user) {
       return c.json({ error: 'User not found' }, 404);
     }
+
+    // timeout status replace
+    if (user.timeoutEnd && user.timeoutEnd <= new Date()) {
+      await db.update(users)
+        .set({
+          timeoutStatus: false,
+          timeoutEnd: null,
+        })
+        .where(eq(users.id, userId))
+    }
     
     c.set('user', user);
     c.set('token', token);

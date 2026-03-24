@@ -6,6 +6,8 @@ import { authMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
 import { USER_ROLES } from '../constants.js'
 import { serverLogger } from '../utils/logger.js'
+import { zValidator } from '@hono/zod-validator'
+import { z } from 'zod'
 
 const usersAPI = new Hono<{ Variables: Variables }>()
 
@@ -28,6 +30,10 @@ const safeUserSelect = {
   createdAt: users.createdAt,
   updatedAt: users.updatedAt,
 }
+
+const timeoutSchema = z.object({
+  duration: z.number().int().positive(),
+})
 
 // GET /api/users - List all users
 usersAPI.get('/', async (c) => {
@@ -75,6 +81,35 @@ usersAPI.get('/id/:id', async (c) => {
     
     serverLogger.info('User fetched successfully', { userId: id })
     return c.json({ message: 'User fetched successfully', user: user }, 200)
+  } catch (e) {
+    serverLogger.error('Failed to fetch user by id', { error: e })
+    return c.json({ error: 'Failed to fetch user by id' }, 500)
+  }
+})
+
+// POST /api/user/timeout/:id - Set user timeout, duration in Hrs
+usersAPI.post('/timeout/:id', zValidator('json', timeoutSchema), async (c) => {
+  const id = c.req.param('id')
+  const { duration } = c.req.valid('json')
+  try {
+    const [user] = await db.select(safeUserSelect)
+      .from(users)
+      .where(eq(users.id, id))
+    
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404)
+    }
+
+    const [updatedUser] = await db.update(users)
+      .set({
+        timeoutEnd: new Date(Date.now() + duration * 60 * 60 * 1000),
+        timeoutStatus: true,
+      })
+      .where(eq(users.id, id))
+      .returning()
+    
+    serverLogger.info('User fetched successfully', { userId: id })
+    return c.json({ message: 'User fetched successfully', user: updatedUser }, 200)
   } catch (e) {
     serverLogger.error('Failed to fetch user by id', { error: e })
     return c.json({ error: 'Failed to fetch user by id' }, 500)
