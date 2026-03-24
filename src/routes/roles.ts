@@ -13,17 +13,17 @@ const rolesAPI = new Hono<{ Variables: Variables }>()
 
 rolesAPI.use(authMiddleware)
 
+const updateRoleSchema = z.object({
+  id: z.string(),
+  role: z.enum([USER_ROLES.ADMIN, USER_ROLES.USER, USER_ROLES.MODERATOR]),
+})
+
 // GET /api/roles - List all roles
 rolesAPI.get('/', (c) => {
   return c.json({ message: 'List all roles', roles: USER_ROLES })
 })
 
 // PUT /api/roles/ - Update a role
-const updateRoleSchema = z.object({
-  id: z.string(),
-  role: z.enum([USER_ROLES.ADMIN, USER_ROLES.USER, USER_ROLES.MODERATOR]),
-})
-
 rolesAPI.put(
   '/',
   zValidator('json', updateRoleSchema, (result, c) => {

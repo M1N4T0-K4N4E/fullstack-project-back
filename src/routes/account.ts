@@ -17,6 +17,16 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
 accountAPI.use(authMiddleware)
 
+const updateAccountSchema = z.object({
+  name: z.string().optional(),
+  avatarUrl: z.string().optional(),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string(),
+  newPassword: z.string().min(PASSWORD_MIN_LENGTH),
+});
+
 // GET /api/account - Get account info
 accountAPI.get('/', async (c) => {
   const user = c.get('user');
@@ -24,12 +34,7 @@ accountAPI.get('/', async (c) => {
   return c.json(safeUser);
 })
 
-// PUT /api/account - Update account info
-const updateAccountSchema = z.object({
-  name: z.string().optional(),
-  avatarUrl: z.string().optional(),
-});
-
+// PUT /api/account - Update account info and sign new token with new info
 accountAPI.put(
   '/',
   zValidator('json', updateAccountSchema, (result, c) => {
@@ -49,8 +54,6 @@ accountAPI.put(
         })
         .where(eq(users.id, user.id))
         .returning();
-        
-      const { password, updatedAt, googleId, createdAt, ...safeUser } = updatedUser;
       
       const jwt = await new jose.SignJWT({
         sub: updatedUser.id,
@@ -72,11 +75,7 @@ accountAPI.put(
   }
 )
 
-const changePasswordSchema = z.object({
-  currentPassword: z.string().min(PASSWORD_MIN_LENGTH),
-  newPassword: z.string().min(PASSWORD_MIN_LENGTH),
-});
-
+// PUT /api/account/password - Change password
 accountAPI.put(
   '/password',
   zValidator('json', changePasswordSchema, (result, c) => {
@@ -114,6 +113,7 @@ accountAPI.put(
         .setExpirationTime('24h')
         .sign(secret);
 
+      serverLogger.info('Password changed successfully', { user: user });
       return c.json({ message: 'Password updated successfully', token: jwt }, 200);
     } catch (e) {
       serverLogger.error('Password change error', { error: e });

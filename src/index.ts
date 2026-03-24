@@ -27,10 +27,10 @@ app.get('/', (c) => {
 })
 
 // Mount API routes
-app.route('/api/roles', roles)
-app.route('/api/posts', posts)
 app.route('/api/account', account)
 app.route('/api/auth', auth)
+app.route('/api/posts', posts)
+app.route('/api/roles', roles)
 app.route('/api/upload', upload)
 app.route('/api/users', users)
 

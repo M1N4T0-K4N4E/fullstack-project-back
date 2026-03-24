@@ -8,11 +8,22 @@ import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
 import { USER_ROLES, FILE_UPLOAD_TYPE } from '../constants.js'
-
 import { v4 as uuidv4 } from 'uuid'
 import redis from '../utils/redis.js'
 
 const postsAPI = new Hono<{ Variables: Variables }>()
+
+const fileSchema = z.object({
+  fileType: z.enum(FILE_UPLOAD_TYPE),
+  content: z.string()
+})
+
+const createPostSchema = z.object({
+  title: z.string().min(1),
+  context: z.string(),
+  picture: z.string(),
+  files: z.array(fileSchema),
+})
 
 // GET /api/posts - List all current posts
 postsAPI.get('/', async (c) => {
@@ -77,18 +88,6 @@ postsAPI.get('/:id', async (c) => {
 })
 
 // POST /api/posts - Create an post
-const fileSchema = z.object({
-  fileType: z.enum(FILE_UPLOAD_TYPE),
-  content: z.string()
-})
-
-const createPostSchema = z.object({
-  title: z.string().min(1),
-  context: z.string(),
-  picture: z.string(),
-  files: z.array(fileSchema),
-})
-
 postsAPI.post(
   '/',
   authMiddleware,
