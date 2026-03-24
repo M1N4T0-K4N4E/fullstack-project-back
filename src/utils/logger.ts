@@ -7,6 +7,14 @@ import { serverLogs, userInteractions } from '../db/schema.js';
 
 const { combine, timestamp, printf, colorize, json } = winston.format;
 
+winston.addColors({
+  error: 'red',
+  warn: 'yellow',
+  info: 'green',
+  http: 'magenta',
+  debug: 'white',
+});
+
 const consoleFormat = printf(({ level, message, timestamp, ...metadata }) => {
   let msg = `[${timestamp}] ${level}: ${message}`;
   if (Object.keys(metadata).length > 0 && metadata.message !== message) {
@@ -55,7 +63,14 @@ export const serverLogger = winston.createLogger({
     }),
     new winston.transports.DailyRotateFile({
       dirname: 'logs',
-      filename: 'server-%DATE%.log',
+      filename: 'server-error-%DATE%.log',
+      level: 'error',
+      datePattern: 'YYYY-MM-DD',
+      maxFiles: '14d',
+    }),
+    new winston.transports.DailyRotateFile({
+      dirname: 'logs',
+      filename: 'server-combined-%DATE%.log',
       datePattern: 'YYYY-MM-DD',
       maxFiles: '14d',
     }),
@@ -73,7 +88,14 @@ export const userLogger = winston.createLogger({
     }),
     new winston.transports.DailyRotateFile({
       dirname: 'logs',
-      filename: 'user-%DATE%.log',
+      filename: 'user-error-%DATE%.log',
+      level: 'error',
+      datePattern: 'YYYY-MM-DD',
+      maxFiles: '14d',
+    }),
+    new winston.transports.DailyRotateFile({
+      dirname: 'logs',
+      filename: 'user-combined-%DATE%.log',
       datePattern: 'YYYY-MM-DD',
       maxFiles: '14d',
     }),
@@ -99,7 +121,7 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
   const ip = c.req.header('x-forwarded-for') || 'unknown';
   const userAgent = c.req.header('user-agent') || 'unknown';
 
-  userLogger.info(`${method} ${path} [${status}] - ${ms}ms - User: ${userId}`, {
+  const logContext = {
     userId,
     userEmail,
     method,
@@ -108,7 +130,15 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
     durationMs: ms,
     ip,
     userAgent
-  });
+  };
+
+  const message = `${method} ${path} [${status}] - ${ms}ms - User: ${userId}`;
+
+  if (status >= 400) {
+    userLogger.error(message, logContext);
+  } else {
+    userLogger.info(message, logContext);
+  }
   
   // Save to Database
   try {
