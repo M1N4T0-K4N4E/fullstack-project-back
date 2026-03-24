@@ -221,6 +221,40 @@ postsAPI.put(
   }
 )
 
+// PUT /api/post/like/:id - Like an post
+postsAPI.put('/like/:id', authMiddleware, async (c) => {
+  const id = c.req.param('id')
+  const user = c.get('user')
+
+  try {
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, id)
+    })
+    if (!post) {
+      serverLogger.error('Post not found', { postId: id })
+      return c.json({ error: 'Post not found' }, 404)
+    }
+
+    if (user.timeoutStatus == true) {
+      serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
+      return c.json({ error: 'Forbidden. You are timeout.' }, 403)
+    }
+
+    const [updatedPost] = await db.update(posts)
+      .set({
+        like: post.like + 1
+      })
+      .where(eq(posts.id, id))
+      .returning()
+    
+    serverLogger.info('Post liked successfully', { postId: id })
+    return c.json({ message: 'Post liked successfully' }, 200)
+  } catch (e) {
+    serverLogger.error('Failed to fetch post for like', { error: e })
+    return c.json({ error: 'Failed to like post' }, 500)
+  }
+})
+
 // DELETE /api/posts/:id - Delete an post
 postsAPI.delete('/:id', authMiddleware, async (c) => {
   const id = c.req.param('id')
