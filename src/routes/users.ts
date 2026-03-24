@@ -5,11 +5,12 @@ import { eq } from 'drizzle-orm'
 import { authMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
 import { USER_ROLES } from '../constants.js'
+import { serverLogger } from '../utils/logger.js'
 
 const usersAPI = new Hono<{ Variables: Variables }>()
 
 // Middleware to ensure only admins can access these routes
-usersAPI.use('/*', authMiddleware, async (c, next) => {
+usersAPI.use(authMiddleware, async (c, next) => {
   const user = c.get('user')
   if (user.role !== USER_ROLES.ADMIN) {
     return c.json({ error: 'Forbidden. ' }, 403)
@@ -22,7 +23,6 @@ const safeUserSelect = {
   id: users.id,
   email: users.email,
   name: users.name,
-  phone: users.phone,
   role: users.role,
   avatarUrl: users.avatarUrl,
   createdAt: users.createdAt,
@@ -33,8 +33,10 @@ const safeUserSelect = {
 usersAPI.get('/', async (c) => {
   try {
     const allUsers = await db.select(safeUserSelect).from(users)
-    return c.json(allUsers)
+    serverLogger.info('Users fetched successfully', { userCount: allUsers.length })
+    return c.json({ message: 'Users fetched successfully', users: allUsers }, 200)
   } catch (e) {
+    serverLogger.error('Failed to fetch users', { error: e })
     return c.json({ error: 'Failed to fetch users' }, 500)
   }
 })
@@ -47,9 +49,14 @@ usersAPI.get('/:id', async (c) => {
       .from(users)
       .where(eq(users.id, id))
     
-    if (!user) return c.json({ error: 'User not found' }, 404)
-    return c.json(user)
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404)
+    }
+
+    serverLogger.info('User fetched successfully', { userId: id })
+    return c.json({ message: 'User fetched successfully', user: user }, 200)
   } catch (e) {
+    serverLogger.error('Failed to fetch user detail', { error: e })
     return c.json({ error: 'Failed to fetch user detail' }, 500)
   }
 })
@@ -62,9 +69,14 @@ usersAPI.get('/id/:id', async (c) => {
       .from(users)
       .where(eq(users.id, id))
     
-    if (!user) return c.json({ error: 'User not found' }, 404)
-    return c.json(user)
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404)
+    }
+    
+    serverLogger.info('User fetched successfully', { userId: id })
+    return c.json({ message: 'User fetched successfully', user: user }, 200)
   } catch (e) {
+    serverLogger.error('Failed to fetch user by id', { error: e })
     return c.json({ error: 'Failed to fetch user by id' }, 500)
   }
 })
