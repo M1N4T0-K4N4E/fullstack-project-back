@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serverLogger } from '../utils/logger.js';
 import { Google, generateState, generateCodeVerifier } from 'arctic';
 import { db } from '../db/index.js';
-import { users, blacklistedTokens } from '../db/schema.js';
+import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { authMiddleware, type Variables } from '../middleware/auth.js';
 import { setCookie, getCookie } from 'hono/cookie';
@@ -11,14 +11,14 @@ import argon2 from 'argon2';
 import { ARGON2_OPTIONS, USER_ROLES } from '../constants.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import redis from '../utils/redis.js';
 
 const authAPI = new Hono<{ Variables: Variables }>();
-
 
 const google = new Google(
   process.env.GOOGLE_CLIENT_ID!,
   process.env.GOOGLE_CLIENT_SECRET!,
-  'http://localhost:3000/api/auth/google/callback'
+  process.env.GOOGLE_CALLBACK_API!
 );
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET);
@@ -27,7 +27,6 @@ const registerSchema = z.object({
   email: z.email('Invalid email format'),
   password: z.string().min(8, 'Password must be at least 8 characters long'),
   name: z.string().min(1, 'Name is required'),
-  role: z.enum([USER_ROLES.USER, USER_ROLES.ORGANIZER]).default(USER_ROLES.USER),
 });
 
 const loginSchema = z.object({
@@ -43,7 +42,7 @@ const googleCallbackSchema = z.object({
 // Email/Password Register
 authAPI.post('/register', zValidator('json', registerSchema), async (c) => {
   try {
-    const { email, password, name, role } = c.req.valid('json');
+    const { email, password, name } = c.req.valid('json');
 
     // Check if user exists
     const existingUser = await db.query.users.findFirst({
@@ -62,10 +61,16 @@ authAPI.post('/register', zValidator('json', registerSchema), async (c) => {
       email,
       password: hashedPassword,
       name,
-      role,
     }).returning();
+
+    const jwt = await new jose.SignJWT({ sub: newUser[0].id, email: newUser[0].email, name: newUser[0].name, role: newUser[0].role })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('24h')
+      .sign(secret);
+
     serverLogger.info('User registered successfully', { userEmail: newUser[0].email, userName: newUser[0].name });
-    return c.json({ message: 'User registered successfully' }, 201);
+    return c.json({ message: 'User registered successfully', token: jwt }, 201);
   } catch (error) {
     serverLogger.error('Registration error', { error });
     return c.json({ error: 'Registration failed' }, 500);
@@ -90,7 +95,7 @@ authAPI.post('/login', zValidator('json', loginSchema), async (c) => {
       return c.json({ error: 'Invalid credentials' }, 401);
     }
 
-    const jwt = await new jose.SignJWT({ sub: user.id, email: user.email, name: user.name, role: user.role, tokenVersion: user.tokenVersion })
+    const jwt = await new jose.SignJWT({ sub: user.id, email: user.email, name: user.name, role: user.role})
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime('24h')
@@ -159,19 +164,20 @@ authAPI.get('/google/callback', zValidator('query', googleCallbackSchema), async
         email: googleUser.email,
         name: googleUser.name,
         avatarUrl: googleUser.picture
-      }).returning({ id: users.id, tokenVersion: users.tokenVersion });
+      }).returning({ id: users.id});
       userId = newUser.id;
-      tokenVersion = newUser.tokenVersion;
     } else {
       userId = existingUser.id;
-      tokenVersion = existingUser.tokenVersion;
     }
 
     // Generate JWT
-    const jwt = await new jose.SignJWT({ sub: userId, email: googleUser.email, tokenVersion })
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId)
+    });
+    const jwt = await new jose.SignJWT({ sub: userId, email: user?.email, name: user?.name, role: user?.role })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setExpirationTime('2h')
+      .setExpirationTime('24h')
       .sign(secret);
 
     // Redirect to frontend with token
@@ -186,18 +192,13 @@ authAPI.get('/me', authMiddleware, async (c) => {
   return c.json(c.get('user'));
 });
 
-
+// Add token to redis blacklist with 12 hour expiration (43200 seconds)
 authAPI.post('/logout', authMiddleware, async (c) => {
   const token = c.get('token');
-  const payload = c.get('payload');
 
   try {
-    if (payload.exp) {
-      await db.insert(blacklistedTokens).values({
-        token,
-        expiresAt: new Date(payload.exp * 1000)
-      });
-    }
+    await redis.set(token, 'true', 'EX', 12 * 60 * 60);
+    
     return c.json({ message: 'Logged out successfully' });
   } catch (error) {
     serverLogger.error('Logout error', { error });
