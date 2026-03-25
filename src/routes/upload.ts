@@ -58,6 +58,28 @@ uploadAPI.post('/:type', authMiddleware, async (c) => {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
     
+    // Magic number check to guarantee the file is a valid image
+    const header = buffer.subarray(0, 12)
+    let isValidMagicNumber = false
+
+    if (file.type === 'image/jpeg') {
+      // JPEG starts with FF D8 FF
+      isValidMagicNumber = header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF
+    } else if (file.type === 'image/png') {
+      // PNG starts with 89 50 4E 47 0D 0A 1A 0A
+      isValidMagicNumber = header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47
+    } else if (file.type === 'image/webp') {
+      // WebP starts with RIFF (offset 0) and WEBP (offset 8)
+      const isRiff = header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46 // "RIFF"
+      const isWebp = header[8] === 0x57 && header[9] === 0x45 && header[10] === 0x42 && header[11] === 0x50 // "WEBP"
+      isValidMagicNumber = isRiff && isWebp
+    }
+
+    if (!isValidMagicNumber) {
+      serverLogger.error('Magic number check failed', { fileType: file.type, header: header.toString('hex') })
+      return c.json({ error: 'Invalid file content. The file does not match its claimed type.' }, 400)
+    }
+
     await fs.promises.writeFile(savePath, buffer)
 
     return c.json({ 
