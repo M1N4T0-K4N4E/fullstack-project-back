@@ -16,7 +16,9 @@ import { unified } from 'unified'
 import rehypeParse from 'rehype-parse'
 import rehypeSanitize from 'rehype-sanitize'
 import rehypeRemark from 'rehype-remark'
-import remarkStringify from 'rehype-stringify' 
+import remarkStringify from 'rehype-stringify'
+import { describeRoute } from 'hono-openapi'
+import type { OpenAPIV3_1 } from 'openapi-types'
 
 
 const postsAPI = new Hono<{ Variables: Variables }>()
@@ -29,84 +31,269 @@ const updatePostSchema = z.object({
   title: z.string().optional(),
   context: z.string().optional(),
   vertex: z.string().optional(),
-  Fragment: z.string().optional(),
+  fragment: z.string().optional(),
 })
 
 const updatePostThumbnailSchema = z.object({
   file: z.instanceof(Blob),
 })
 
-// GET /api/posts - List all current posts
-postsAPI.get('/', async (c) => {
-  try {
-    const allPosts = await db.query.posts.findMany({
-      with: {
-        user: {
-          columns: {
-            name: true,
-          }
-        }
+// OpenAPI Response Schemas
+const ErrorResponseSchema: OpenAPIV3_1.ResponseObject = {
+  description: 'Error response',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          error: { type: 'string' },
+        },
       },
-      columns: {
-        userId: false,
-        createdAt: false,
-        updatedAt: false,
-      }
-    })
-    return c.json(allPosts)
-  } catch (e) {
-    serverLogger.error('Failed to fetch posts', { error: e })
-    return c.json({ error: 'Failed to fetch posts' }, 500)
+    },
+  },
+};
+
+const PostSchema: OpenAPIV3_1.SchemaObject = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    title: { type: 'string' },
+    context: { type: 'string' },
+    thumbnail: { type: ['string', 'null'] },
+    like: { type: 'integer' },
+    dislike: { type: 'integer' },
+    user: {
+      type: 'object',
+      properties: {
+        name: { type: ['string', 'null'] },
+      },
+    },
+  },
+};
+
+const PostListResponseSchema: OpenAPIV3_1.ResponseObject = {
+  description: 'List of posts',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'array',
+        items: PostSchema,
+      },
+    },
+  },
+};
+
+const PostDetailResponseSchema: OpenAPIV3_1.ResponseObject = {
+  description: 'Post detail',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          message: { type: 'string' },
+          post: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              title: { type: 'string' },
+              context: { type: 'string' },
+              thumbnail: { type: ['string', 'null'] },
+              like: { type: 'integer' },
+              dislike: { type: 'integer' },
+              vertex: { type: ['string', 'null'] },
+              fragment: { type: ['string', 'null'] },
+              user: {
+                type: 'object',
+                properties: {
+                  name: { type: ['string', 'null'] },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+const CreatePostRequestSchema: OpenAPIV3_1.RequestBodyObject = {
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        required: ['title'],
+        properties: {
+          title: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+const CreatePostResponseSchema: OpenAPIV3_1.ResponseObject = {
+  description: 'Post created successfully',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          message: { type: 'string' },
+          postId: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+const UpdatePostRequestSchema: OpenAPIV3_1.RequestBodyObject = {
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          context: { type: 'string' },
+          vertex: { type: 'string' },
+          fragment: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+const MessageResponseSchema: OpenAPIV3_1.ResponseObject = {
+  description: 'Success message',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          message: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+// GET /api/posts - List all current posts
+postsAPI.get(
+  '/',
+  describeRoute({
+    operationId: 'listPosts',
+    tags: ['posts'],
+    summary: 'List all posts',
+    description: 'Get a list of all posts with user info',
+    responses: {
+      200: PostListResponseSchema,
+      500: ErrorResponseSchema,
+    },
+  }),
+  async (c) => {
+    try {
+      const allPosts = await db.query.posts.findMany({
+        with: {
+          user: {
+            columns: {
+              name: true,
+            }
+          }
+        },
+        columns: {
+          userId: false,
+          createdAt: false,
+          updatedAt: false,
+        }
+      })
+      return c.json(allPosts)
+    } catch (e) {
+      serverLogger.error('Failed to fetch posts', { error: e })
+      return c.json({ error: 'Failed to fetch posts' }, 500)
+    }
   }
-})
+)
 
 // GET /api/posts/:id - Get specific post detail
-postsAPI.get('/:id', async (c) => {
-  const id = c.req.param('id')
-  try {
-    const post = await db.query.posts.findFirst({
-      where: eq(posts.id, id),
-      with: {
-        user: {
-          columns: {
-            name: true,
-          }
-        }
+postsAPI.get(
+  '/:id',
+  describeRoute({
+    operationId: 'getPost',
+    tags: ['posts'],
+    summary: 'Get post by ID',
+    description: 'Get detailed post info including shader code',
+    parameters: [
+      {
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
       },
-      columns: {
-        userId: false,
-        updatedAt: false,
+    ],
+    responses: {
+      200: PostDetailResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
+  }),
+  async (c) => {
+    const id = c.req.param('id')
+    try {
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, id),
+        with: {
+          user: {
+            columns: {
+              name: true,
+            }
+          }
+        },
+        columns: {
+          userId: false,
+          updatedAt: false,
+        }
+      })
+      if (!post) {
+        serverLogger.error('Post not found', { postId: id })
+        return c.json({ error: 'Post not found' }, 404)
       }
-    })
-    if (!post) {
-      serverLogger.error('Post not found', { postId: id })
-      return c.json({ error: 'Post not found' }, 404)
+
+      const vertexKey = `post-file:${id}:vertex`
+      const fragmentKey = `post-file:${id}:fragment`
+      const [vertexFile, fragmentFile] = await Promise.all([
+        redis.get(vertexKey),
+        redis.get(fragmentKey),
+      ])
+
+
+      serverLogger.info('Post fetched successfully', { postId: id })
+      return c.json({message: 'Post fetched successfully', post: {...post, vertex: vertexFile, fragment: fragmentFile }}, 200)
+    } catch (e) {
+      serverLogger.error('Failed to fetch post detail', { error: e })
+      return c.json({ error: 'Failed to fetch post detail' }, 500)
     }
-
-    // Fetch files from Redis
-    const vertexKey = `post-file:${id}:vertex`
-    const fragmentKey = `post-file:${id}:fragment`
-    const [vertexFile, fragmentFile] = await Promise.all([
-      redis.get(vertexKey),
-      redis.get(fragmentKey),
-    ])
-    
-
-    serverLogger.info('Post fetched successfully', { postId: id })
-    return c.json({message: 'Post fetched successfully', post: {...post, vertex: vertexFile, fragment: fragmentFile }}, 200)
-  } catch (e) {
-    serverLogger.error('Failed to fetch post detail', { error: e })
-    return c.json({ error: 'Failed to fetch post detail' }, 500)
   }
-})
+)
 
 // POST /api/posts - Create a post
 postsAPI.post(
   '/',
-  authMiddleware,
-  zValidator('json', createPostSchema, (result, c) => {
-    if (!result.success) return c.json({ error: 'Invalid input' }, 400)
+  describeRoute({
+    operationId: 'createPost',
+    tags: ['posts'],
+    summary: 'Create a new post',
+    description: 'Create a new shader post',
+    security: [{ Bearer: [] }],
+    requestBody: CreatePostRequestSchema,
+    responses: {
+      201: CreatePostResponseSchema,
+      400: ErrorResponseSchema,
+      401: ErrorResponseSchema,
+      403: ErrorResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
   }),
+  authMiddleware,
+  zValidator('json', createPostSchema),
   async (c) => {
     const user = c.get('user');
     const { title } = c.req.valid('json');
@@ -136,8 +323,8 @@ postsAPI.post(
         })
         .returning({
           id: posts.id,
-          });
-      
+        });
+
       serverLogger.info('Post created successfully', { postId: newPost.id });
       return c.json({ message: 'Post created successfully', postId: newPost.id }, 201);
     } catch (e) {
@@ -147,11 +334,46 @@ postsAPI.post(
   }
 )
 
-// PUT /api/post/:id/thumbnail - Update a post thumbnail
+// PUT /api/posts/:id/thumbnail - Update a post thumbnail
 postsAPI.put(
-  '/:id/thumbnail', zValidator('form', updatePostThumbnailSchema, (result, c) => {
-    if (!result.success) return c.json({ error: 'Invalid input' }, 400)
+  '/:id/thumbnail',
+  describeRoute({
+    operationId: 'updatePostThumbnail',
+    tags: ['posts'],
+    summary: 'Update post thumbnail',
+    description: 'Upload a thumbnail image for a post',
+    security: [{ Bearer: [] }],
+    parameters: [
+      {
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
+      },
+    ],
+    requestBody: {
+      content: {
+        'multipart/form-data': {
+          schema: {
+            type: 'object',
+            required: ['file'],
+            properties: {
+              file: { type: 'string', format: 'binary' },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      200: CreatePostResponseSchema,
+      400: ErrorResponseSchema,
+      401: ErrorResponseSchema,
+      403: ErrorResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
   }),
+  zValidator('form', updatePostThumbnailSchema),
   async (c) => {
     const id = c.req.param('id')
     const user = c.get('user')
@@ -192,7 +414,7 @@ postsAPI.put(
         'image/png': '.png',
         'image/webp': '.webp',
       };
-    
+
       const fileExt = MIME_MAP[file.type]
       if (!fileExt) {
         serverLogger.error('Invalid file type', { fileType: file.type })
@@ -203,10 +425,10 @@ postsAPI.put(
         serverLogger.error('File size exceeds the 5MB limit', { fileSize: file.size })
         return c.json({ error: 'File size exceeds the 5MB limit.' }, 400)
       }
-    
+
       const filename = 'thumbnail' + fileExt
       const targetDir = path.join(process.cwd(), 'uploads', 'posts', id)
-      
+
       if (!fs.existsSync(targetDir)) {
         await fs.promises.mkdir(targetDir, { recursive: true })
       }
@@ -215,20 +437,17 @@ postsAPI.put(
       const arrayBuffer = await (file as Blob).arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
 
-      // Magic number check to guarantee the file is a valid image
+      // Magic number check
       const header = buffer.subarray(0, 12)
       let isValidMagicNumber = false
 
       if (file.type === 'image/jpeg') {
-        // JPEG starts with FF D8 FF
         isValidMagicNumber = header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF
       } else if (file.type === 'image/png') {
-        // PNG starts with 89 50 4E 47 0D 0A 1A 0A
         isValidMagicNumber = header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47
       } else if (file.type === 'image/webp') {
-        // WebP starts with RIFF (offset 0) and WEBP (offset 8)
-        const isRiff = header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46 // "RIFF"
-        const isWebp = header[8] === 0x57 && header[9] === 0x45 && header[10] === 0x42 && header[11] === 0x50 // "WEBP"
+        const isRiff = header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46
+        const isWebp = header[8] === 0x57 && header[9] === 0x45 && header[10] === 0x42 && header[11] === 0x50
         isValidMagicNumber = isRiff && isWebp
       }
 
@@ -256,18 +475,37 @@ postsAPI.put(
       return c.json({ error: 'Failed to update post thumbnail' }, 500)
     }
   }
-  )
+)
 
 // PUT /api/posts/:id - Update a post
 postsAPI.put(
   '/:id',
-  authMiddleware,
-  zValidator('json', updatePostSchema, (result, c) => {
-    if (!result.success) {
-      return c.json({ error: 'Invalid input' }, 400)
-    }
-    
+  describeRoute({
+    operationId: 'updatePost',
+    tags: ['posts'],
+    summary: 'Update a post',
+    description: 'Update post content and shader code',
+    security: [{ Bearer: [] }],
+    parameters: [
+      {
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
+      },
+    ],
+    requestBody: UpdatePostRequestSchema,
+    responses: {
+      200: MessageResponseSchema,
+      400: ErrorResponseSchema,
+      401: ErrorResponseSchema,
+      403: ErrorResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
   }),
+  authMiddleware,
+  zValidator('json', updatePostSchema),
   async (c) => {
     const id = c.req.param('id')
     const user = c.get('user')
@@ -287,7 +525,7 @@ postsAPI.put(
         return c.json({ error: 'Forbidden. You do not have permission to update this post.' }, 403)
       }
 
-      const { title, context, vertex, Fragment } = c.req.valid('json')
+      const { title, context, vertex, fragment } = c.req.valid('json')
       const uploadedRedisFiles: string[] = []
 
       const sanitizedTitle = unified()
@@ -318,7 +556,6 @@ postsAPI.put(
 
           let error: GlslSyntaxError | undefined;
 
-          // Update files
           const vertexKey = `post-file:${id}:vertex`
           const fragmentKey = `post-file:${id}:fragment`
 
@@ -346,9 +583,9 @@ postsAPI.put(
             uploadedRedisFiles.push(vertexKey)
           }
 
-          if (Fragment) {
+          if (fragment) {
             try {
-              parse(Fragment)
+              parse(fragment)
             } catch (e) {
               error = e as GlslSyntaxError
             }
@@ -359,7 +596,7 @@ postsAPI.put(
             }
 
             const redisFile: ShaderFile = {
-              content: Fragment
+              content: fragment
             }
 
             const oldFragment = await redis.get(fragmentKey)
@@ -385,131 +622,208 @@ postsAPI.put(
   }
 )
 
-// PUT /api/post/like/:id - Like an post
-postsAPI.put('/like/:id', authMiddleware, async (c) => {
-  const id = c.req.param('id')
-  const user = c.get('user')
+// PUT /api/posts/like/:id - Like a post
+postsAPI.put(
+  '/like/:id',
+  describeRoute({
+    operationId: 'likePost',
+    tags: ['posts'],
+    summary: 'Like a post',
+    description: 'Increment the like count of a post',
+    security: [{ Bearer: [] }],
+    parameters: [
+      {
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
+      },
+    ],
+    responses: {
+      200: MessageResponseSchema,
+      401: ErrorResponseSchema,
+      403: ErrorResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
+  }),
+  authMiddleware,
+  async (c) => {
+    const id = c.req.param('id')
+    const user = c.get('user')
 
-  try {
-    const post = await db.query.posts.findFirst({
-      where: eq(posts.id, id)
-    })
-    if (!post) {
-      serverLogger.error('Post not found', { postId: id })
-      return c.json({ error: 'Post not found' }, 404)
+    try {
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, id)
+      })
+      if (!post) {
+        serverLogger.error('Post not found', { postId: id })
+        return c.json({ error: 'Post not found' }, 404)
+      }
+
+      if (user.status == USER_STATUS.TIMEOUT) {
+        serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
+        return c.json({ error: 'Forbidden. You are timeout.' }, 403)
+      }
+
+      const [updatedPost] = await db.update(posts)
+        .set({
+          like: post.like + 1
+        })
+        .where(eq(posts.id, id))
+        .returning()
+
+      serverLogger.info('Post liked successfully', { postId: id })
+      return c.json({ message: 'Post liked successfully' }, 200)
+    } catch (e) {
+      serverLogger.error('Failed to fetch post for like', { error: e })
+      return c.json({ error: 'Failed to like post' }, 500)
     }
+  }
+)
+
+// PUT /api/posts/dislike/:id - Dislike a post
+postsAPI.put(
+  '/dislike/:id',
+  describeRoute({
+    operationId: 'dislikePost',
+    tags: ['posts'],
+    summary: 'Dislike a post',
+    description: 'Toggle dislike on a post',
+    security: [{ Bearer: [] }],
+    parameters: [
+      {
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
+      },
+    ],
+    responses: {
+      200: MessageResponseSchema,
+      401: ErrorResponseSchema,
+      403: ErrorResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
+  }),
+  authMiddleware,
+  async (c) => {
+    const id = c.req.param('id')
+    const user = c.get('user')
 
     if (user.status == USER_STATUS.TIMEOUT) {
       serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
       return c.json({ error: 'Forbidden. You are timeout.' }, 403)
     }
 
-    const [updatedPost] = await db.update(posts)
-      .set({
-        like: post.like + 1
+    try {
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, id)
       })
-      .where(eq(posts.id, id))
-      .returning()
-    
-    serverLogger.info('Post liked successfully', { postId: id })
-    return c.json({ message: 'Post liked successfully' }, 200)
-  } catch (e) {
-    serverLogger.error('Failed to fetch post for like', { error: e })
-    return c.json({ error: 'Failed to like post' }, 500)
-  }
-})
-
-// PUT /api/post/dislike/:id - Dislike an post
-postsAPI.put('/dislike/:id', authMiddleware, async (c) => {
-  const id = c.req.param('id')
-  const user = c.get('user')
-
-  if (user.status == USER_STATUS.TIMEOUT) {
-    serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
-    return c.json({ error: 'Forbidden. You are timeout.' }, 403)
-  }
-
-  try {
-    const post = await db.query.posts.findFirst({
-      where: eq(posts.id, id)
-    })
-    if (!post) {
-      serverLogger.error('Post not found', { postId: id })
-      return c.json({ error: 'Post not found' }, 404)
-    }
+      if (!post) {
+        serverLogger.error('Post not found', { postId: id })
+        return c.json({ error: 'Post not found' }, 404)
+      }
 
 
-    const [updatedPost] = await db.update(posts)
-      .set({
-        dislike: post.dislike + 1
-      })
-      .where(eq(posts.id, id))
-      .returning()
-    
-    const dislike = await db.query.postDislikes.findFirst({
-      where: eq(postDislikes.userId, user.id)
-    })
-    if (dislike) {
-      await db.delete(postDislikes)
-        .where(eq(postDislikes.userId, user.id))
-        .returning()
-      await db.update(posts)
+      const [updatedPost] = await db.update(posts)
         .set({
-          dislike: post.dislike - 1
+          dislike: post.dislike + 1
         })
         .where(eq(posts.id, id))
         .returning()
-    } else {
-      await db.insert(postDislikes)
-        .values({
-          userId: user.id,
-          postId: id
-        })
-        .returning()
-        await db.update(posts)
-      .set({
-        dislike: post.dislike + 1
+
+      const dislike = await db.query.postDislikes.findFirst({
+        where: eq(postDislikes.userId, user.id)
       })
-      .where(eq(posts.id, id))
-      .returning()
+      if (dislike) {
+        await db.delete(postDislikes)
+          .where(eq(postDislikes.userId, user.id))
+          .returning()
+        await db.update(posts)
+          .set({
+            dislike: post.dislike - 1
+          })
+          .where(eq(posts.id, id))
+          .returning()
+      } else {
+        await db.insert(postDislikes)
+          .values({
+            userId: user.id,
+            postId: id
+          })
+          .returning()
+        await db.update(posts)
+        .set({
+          dislike: post.dislike + 1
+        })
+        .where(eq(posts.id, id))
+        .returning()
+      }
+
+      serverLogger.info('Post disliked successfully', { postId: id })
+      return c.json({ message: 'Post disliked successfully' }, 200)
+    } catch (e) {
+      serverLogger.error('Failed to fetch post for dislike', { error: e })
+      return c.json({ error: 'Failed to dislike post' }, 500)
     }
-    
-    serverLogger.info('Post disliked successfully', { postId: id })
-    return c.json({ message: 'Post disliked successfully' }, 200)
-  } catch (e) {
-    serverLogger.error('Failed to fetch post for dislike', { error: e })
-    return c.json({ error: 'Failed to dislike post' }, 500)
   }
-})
+)
 
-// DELETE /api/posts/:id - Delete an post
-postsAPI.delete('/:id', authMiddleware, async (c) => {
-  const id = c.req.param('id')
-  const user = c.get('user')
+// DELETE /api/posts/:id - Delete a post
+postsAPI.delete(
+  '/:id',
+  describeRoute({
+    operationId: 'deletePost',
+    tags: ['posts'],
+    summary: 'Delete a post',
+    description: 'Delete a post by ID',
+    security: [{ Bearer: [] }],
+    parameters: [
+      {
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
+      },
+    ],
+    responses: {
+      200: MessageResponseSchema,
+      401: ErrorResponseSchema,
+      403: ErrorResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
+  }),
+  authMiddleware,
+  async (c) => {
+    const id = c.req.param('id')
+    const user = c.get('user')
 
-  try {
-    const post = await db.query.posts.findFirst({
-      where: eq(posts.id, id)
-    })
-    if (!post) return c.json({ error: 'Post not found' }, 404)
+    try {
+      const post = await db.query.posts.findFirst({
+        where: eq(posts.id, id)
+      })
+      if (!post) return c.json({ error: 'Post not found' }, 404)
 
-    if (user.role !== USER_ROLES.ADMIN && post.userId !== user.id) {
-      return c.json({ error: 'Forbidden. You do not have permission to delete this post.' }, 403)
+      if (user.role !== USER_ROLES.ADMIN && post.userId !== user.id) {
+        return c.json({ error: 'Forbidden. You do not have permission to delete this post.' }, 403)
+      }
+
+      const fileKeys = await redis.keys(`post-file:${id}:*`)
+      if (fileKeys.length > 0) {
+        await redis.del(...fileKeys)
+      }
+
+      await db.delete(posts).where(eq(posts.id, id))
+      serverLogger.info('Post deleted successfully', { postId: id })
+      return c.json({ message: 'Post deleted' }, 200)
+    } catch (e) {
+      serverLogger.error('Failed to delete post', { error: e })
+      return c.json({ error: 'Failed to delete post' }, 500)
     }
-
-    // Delete files from Redis - Use keys pattern to find all related files
-    const fileKeys = await redis.keys(`post-file:${id}:*`)
-    if (fileKeys.length > 0) {
-      await redis.del(...fileKeys)
-    }
-
-    await db.delete(posts).where(eq(posts.id, id))
-    serverLogger.info('Post deleted successfully', { postId: id })
-    return c.json({ message: 'Post deleted' }, 200)
-  } catch (e) {
-    serverLogger.error('Failed to delete post', { error: e })
-    return c.json({ error: 'Failed to delete post' }, 500)
   }
-})
+)
 
 export default postsAPI

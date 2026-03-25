@@ -7,9 +7,9 @@ import roles from './routes/roles.js'
 import posts from './routes/posts.js'
 import account from './routes/account.js'
 import auth from './routes/auth.js'
-import upload from './routes/upload.js'
 import users from './routes/users.js'
 import { serveStatic } from '@hono/node-server/serve-static'
+import { openAPIRouteHandler } from 'hono-openapi'
 
 const app = new Hono()
 app.use('*', userInteractionLogger)
@@ -31,8 +31,27 @@ app.route('/api/account', account)
 app.route('/api/auth', auth)
 app.route('/api/posts', posts)
 app.route('/api/roles', roles)
-app.route('/api/upload', upload)
 app.route('/api/users', users)
+
+// OpenAPI documentation endpoint
+app.get(
+  '/doc',
+  openAPIRouteHandler(app, {
+    documentation: {
+      info: {
+        title: 'Shaderd API',
+        description: 'API documentation for Shaderd - A shader sharing platform',
+        version: '1.0.0',
+      },
+      servers: [
+        {
+          url: 'http://localhost:3001',
+          description: 'Development server',
+        },
+      ],
+    },
+  })
+)
 
 serve({
   fetch: app.fetch,
