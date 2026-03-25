@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware, authGuestMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
-import { USER_ROLES, USER_STATUS, type ShaderFile } from '../constants.js'
+import { USER_ROLES, USER_STATUS } from '../constants.js'
 import redis from '../utils/redis.js'
 import { parse, GlslSyntaxError } from '@shaderfrog/glsl-parser'
 import path from 'path'
@@ -470,7 +470,7 @@ postsAPI.put(
       }
 
       const filename = 'thumbnail' + fileExt
-      const targetDir = path.join(process.cwd(), 'uploads', 'posts', id)
+      const targetDir = path.join(process.cwd(), 'files', 'posts', id)
 
       if (!fs.existsSync(targetDir)) {
         await fs.promises.mkdir(targetDir, { recursive: true })
@@ -501,7 +501,7 @@ postsAPI.put(
 
       await fs.promises.writeFile(savePath, buffer)
 
-      const picture = `/uploads/posts/${id}/${filename}`
+      const picture = `/files/posts/${id}/${filename}`
       const [updatedPost] = await db.update(posts)
         .set({
           thumbnail: picture,
@@ -870,7 +870,7 @@ postsAPI.delete(
     })
     if (!post) return c.json({ error: 'Post not found' }, 404)
 
-    if (user.role !== USER_ROLES.ADMIN && post.userId !== user.id) {
+    if (user.role !== USER_ROLES.ADMIN && user.role !== USER_ROLES.MODERATOR && post.userId !== user.id) {
       return c.json({ error: 'Forbidden. You do not have permission to delete this post.' }, 403)
     }
 
