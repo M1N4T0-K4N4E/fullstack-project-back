@@ -1,0 +1,1 @@
+ALTER TABLE "user_interactions" ADD COLUMN "action" text DEFAULT 'unknown' NOT NULL;

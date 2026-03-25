@@ -1,5 +1,5 @@
 import { pgTable, text, integer, timestamp, uuid, jsonb, boolean } from 'drizzle-orm/pg-core';
-import { relations, } from 'drizzle-orm';
+import { is, relations, } from 'drizzle-orm';
 import { init } from '@paralleldrive/cuid2';
 import { USER_ROLES, USER_STATUS } from '../constants.js';
 
@@ -31,6 +31,7 @@ export const posts = pgTable('posts', {
   like: integer('like').default(0).notNull(),
   dislike: integer('dislike').default(0).notNull(),
   isPublic: boolean('is_public').default(false),
+  isDeleted: boolean('is_deleted').default(false),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 
@@ -73,6 +74,7 @@ export const userInteractions = pgTable('user_interactions', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull(), // can be 'guest'
   userEmail: text('user_email').notNull(),
+  action: text('action').notNull().default('unknown'),
   method: text('method').notNull(),
   path: text('path').notNull(),
   status: integer('status').notNull(),
