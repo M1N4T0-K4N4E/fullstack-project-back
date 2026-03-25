@@ -619,7 +619,7 @@ postsAPI.put(
           await tx.update(posts)
             .set({
               title: sanitizedTitle,
-              context: String(sanitizedContext.result ?? ''),
+              context: String(sanitizedContext ?? ''),
               updatedAt: new Date()
             })
             .where(eq(posts.id, id))
