@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
 import { db } from '../db/index.js'
 import { users } from '../db/schema.js'
-import { eq } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 import { authMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
-import { USER_ROLES, USER_STATUS } from '../constants.js'
+import { PAGINATION, USER_ROLES, USER_STATUS } from '../constants.js'
 import { serverLogger } from '../utils/logger.js'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
@@ -38,6 +38,11 @@ const timeoutSchema = z.object({
   duration: z.number().int().positive(),
 });
 
+const PaginationParams = z.object({
+  page: z.string().default(String(PAGINATION.DEFAULT_PAGE)).transform(Number).pipe(z.number().int().min(PAGINATION.DEFAULT_PAGE)),
+  limit: z.string().default(String(PAGINATION.DEFAULT_LIMIT)).transform(Number).pipe(z.number().int().min(PAGINATION.MIN_LIMIT).max(PAGINATION.MAX_LIMIT)),
+});
+
 // OpenAPI Response Schemas
 const ErrorResponseSchema: OpenAPIV3_1.ResponseObject = {
   description: 'Error response',
@@ -68,17 +73,20 @@ const UserSchema: OpenAPIV3_1.SchemaObject = {
 };
 
 const UserListResponseSchema: OpenAPIV3_1.ResponseObject = {
-  description: 'List of users',
+  description: 'Paginated list of users',
   content: {
     'application/json': {
       schema: {
         type: 'object',
         properties: {
-          message: { type: 'string' },
-          users: {
+          data: {
             type: 'array',
             items: UserSchema,
           },
+          total: { type: 'integer' },
+          page: { type: 'integer' },
+          limit: { type: 'integer' },
+          totalPages: { type: 'integer' },
         },
       },
     },
@@ -136,8 +144,22 @@ usersAPI.get(
     operationId: 'listUsers',
     tags: ['users'],
     summary: 'List all users',
-    description: 'Get a list of all users (admin only)',
+    description: 'Get a paginated list of all users (admin only)',
     security: [{ Bearer: [] }],
+    parameters: [
+      {
+        name: 'page',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_PAGE, minimum: PAGINATION.DEFAULT_PAGE },
+      },
+      {
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_LIMIT, minimum: PAGINATION.MIN_LIMIT, maximum: PAGINATION.MAX_LIMIT },
+      },
+    ],
     responses: {
       200: UserListResponseSchema,
       401: ErrorResponseSchema,
@@ -145,11 +167,18 @@ usersAPI.get(
       500: ErrorResponseSchema,
     },
   }),
+  zValidator('query', PaginationParams),
   async (c) => {
     try {
-      const allUsers = await db.select(userSelect).from(users)
-      serverLogger.info('Users fetched successfully', { userCount: allUsers.length })
-      return c.json({ message: 'Users fetched successfully', users: allUsers }, 200)
+      const { page, limit } = c.req.valid('query')
+      const offset = (page - 1) * limit
+
+      const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(users)
+      const allUsers = await db.select(userSelect).from(users).orderBy(desc(users.createdAt)).limit(limit).offset(offset)
+      const totalPages = Math.ceil(count / limit)
+
+      serverLogger.info('Users fetched successfully', { userCount: allUsers.length, total: count, page, limit })
+      return c.json({ data: allUsers, total: count, page, limit, totalPages }, 200)
     } catch (e) {
       serverLogger.error('Failed to fetch users', { error: e })
       return c.json({ error: 'Failed to fetch users' }, 500)

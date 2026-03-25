@@ -2,12 +2,12 @@ import { Hono } from 'hono'
 import { serverLogger } from '../utils/logger.js'
 import { db } from '../db/index.js'
 import { postDislikes, postLikes, posts, users } from '../db/schema.js'
-import { and, eq, or } from 'drizzle-orm'
+import { and, desc, eq, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware, authGuestMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
-import { USER_ROLES, USER_STATUS } from '../constants.js'
+import { PAGINATION, USER_ROLES, USER_STATUS } from '../constants.js'
 import redis from '../utils/redis.js'
 import { parse, GlslSyntaxError } from '@shaderfrog/glsl-parser'
 import path from 'path'
@@ -19,7 +19,6 @@ import rehypeRemark from 'rehype-remark'
 import remarkStringify from 'remark-stringify'
 import { describeRoute } from 'hono-openapi'
 import type { OpenAPIV3_1 } from 'openapi-types'
-import { create } from 'domain'
 
 
 const postsAPI = new Hono<{ Variables: Variables }>()
@@ -37,6 +36,11 @@ const updatePostSchema = z.object({
 
 const updatePostThumbnailSchema = z.object({
   file: z.instanceof(Blob),
+})
+
+const PaginationParams = z.object({
+  page: z.string().default(String(PAGINATION.DEFAULT_PAGE)).transform(Number).pipe(z.number().int().min(PAGINATION.DEFAULT_PAGE)),
+  limit: z.string().default(String(PAGINATION.DEFAULT_LIMIT)).transform(Number).pipe(z.number().int().min(PAGINATION.MIN_LIMIT).max(PAGINATION.MAX_LIMIT)),
 })
 
 // OpenAPI Response Schemas
@@ -74,12 +78,21 @@ const PostSchema: OpenAPIV3_1.SchemaObject = {
 };
 
 const PostListResponseSchema: OpenAPIV3_1.ResponseObject = {
-  description: 'List of posts',
+  description: 'Paginated list of posts',
   content: {
     'application/json': {
       schema: {
-        type: 'array',
-        items: PostSchema,
+        type: 'object',
+        properties: {
+          data: {
+            type: 'array',
+            items: PostSchema,
+          },
+          total: { type: 'integer' },
+          page: { type: 'integer' },
+          limit: { type: 'integer' },
+          totalPages: { type: 'integer' },
+        },
       },
     },
   },
@@ -185,20 +198,46 @@ postsAPI.get(
     operationId: 'listPosts',
     tags: ['posts'],
     summary: 'List all posts',
-    description: 'Get a list of all posts with user info',
+    description: 'Get a paginated list of all posts with user info',
+    parameters: [
+      {
+        name: 'page',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_PAGE, minimum: PAGINATION.DEFAULT_PAGE },
+      },
+      {
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_LIMIT, minimum: PAGINATION.MIN_LIMIT, maximum: PAGINATION.MAX_LIMIT },
+      },
+    ],
     responses: {
       200: PostListResponseSchema,
       500: ErrorResponseSchema,
     },
   }),
   authGuestMiddleware,
+  zValidator('query', PaginationParams),
   async (c) => {
     let allPosts;
     const user = c.get('user') ?? { id: 'guest', email: 'none', role: USER_ROLES.USER  }
+    const { page, limit } = c.req.valid('query')
+    const offset = (page - 1) * limit
     try {
+      const whereClause = user.role === USER_ROLES.ADMIN
+        ? eq(posts.isDeleted, false)
+        : and(eq(posts.isPublic, true), eq(posts.isDeleted, false))
+
+      const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(posts).where(whereClause)
+
       if (user.role === USER_ROLES.ADMIN) {
         allPosts = await db.query.posts.findMany({
           where: eq(posts.isDeleted, false),
+          orderBy: desc(posts.createdAt),
+          limit,
+          offset,
           with: {
             user: {
               columns: {
@@ -214,6 +253,9 @@ postsAPI.get(
       } else {
         allPosts = await db.query.posts.findMany({
           where: and(eq(posts.isPublic, true), eq(posts.isDeleted, false)),
+          orderBy: desc(posts.createdAt),
+          limit,
+          offset,
           with: {
             user: {
               columns: {
@@ -227,8 +269,8 @@ postsAPI.get(
           }
         })
       }
-      console.log(allPosts)
-      return c.json(allPosts)
+      const totalPages = Math.ceil(count / limit)
+      return c.json({ data: allPosts, total: count, page, limit, totalPages })
     } catch (e) {
       serverLogger.error('Failed to fetch posts', { error: e })
       return c.json({ error: 'Failed to fetch posts' }, 500)
@@ -243,18 +285,42 @@ postsAPI.get(
     operationId: 'listPosts',
     tags: ['posts'],
     summary: 'List all posts',
-    description: 'Get a list of all posts with user info',
+    description: 'Get a paginated list of own posts with user info',
+    parameters: [
+      {
+        name: 'page',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_PAGE, minimum: PAGINATION.DEFAULT_PAGE },
+      },
+      {
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_LIMIT, minimum: PAGINATION.MIN_LIMIT, maximum: PAGINATION.MAX_LIMIT },
+      },
+    ],
     responses: {
       200: PostListResponseSchema,
       500: ErrorResponseSchema,
     },
   }),
   authMiddleware,
+  zValidator('query', PaginationParams),
   async (c) => {
     const user = c.get('user')
+    const { page, limit } = c.req.valid('query')
+    const offset = (page - 1) * limit
     try {
+      const [{ count }] = await db.select({ count: sql<number>`count(*)` })
+        .from(posts)
+        .where(and(eq(posts.userId, user.id), eq(posts.isDeleted, false)))
+
       const allPosts = await db.query.posts.findMany({
         where: and(eq(posts.userId, user.id), eq(posts.isDeleted, false)),
+        orderBy: desc(posts.createdAt),
+        limit,
+        offset,
         with: {
           user: {
             columns: {
@@ -267,7 +333,8 @@ postsAPI.get(
           updatedAt: false,
         }
       })
-      return c.json(allPosts)
+      const totalPages = Math.ceil(count / limit)
+      return c.json({ data: allPosts, total: count, page, limit, totalPages })
     } catch (e) {
       serverLogger.error('Failed to fetch posts', { error: e })
       return c.json({ error: 'Failed to fetch posts' }, 500)
