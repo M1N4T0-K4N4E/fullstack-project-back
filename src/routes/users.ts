@@ -16,18 +16,19 @@ const usersAPI = new Hono<{ Variables: Variables }>()
 // Middleware to ensure only admins can access these routes
 usersAPI.use(authMiddleware, async (c, next) => {
   const user = c.get('user')
-  if (user.role !== USER_ROLES.ADMIN) {
+  if (user.role !== USER_ROLES.ADMIN && user.role !== USER_ROLES.MODERATOR) {
     return c.json({ error: 'Forbidden. ' }, 403)
   }
   await next()
 })
 
 // Safe user selection
-const safeUserSelect = {
+const userSelect = {
   id: users.id,
   email: users.email,
   name: users.name,
   role: users.role,
+  status: users.status,
   avatarUrl: users.avatarUrl,
   createdAt: users.createdAt,
   updatedAt: users.updatedAt,
@@ -59,6 +60,7 @@ const UserSchema: OpenAPIV3_1.SchemaObject = {
     email: { type: ['string', 'null'] },
     name: { type: ['string', 'null'] },
     role: { type: ['string', 'null'] },
+    status: { type: ['string', 'null'] },
     avatarUrl: { type: ['string', 'null'] },
     createdAt: { type: 'string' },
     updatedAt: { type: 'string' },
@@ -145,7 +147,7 @@ usersAPI.get(
   }),
   async (c) => {
     try {
-      const allUsers = await db.select(safeUserSelect).from(users)
+      const allUsers = await db.select(userSelect).from(users)
       serverLogger.info('Users fetched successfully', { userCount: allUsers.length })
       return c.json({ message: 'Users fetched successfully', users: allUsers }, 200)
     } catch (e) {
@@ -183,7 +185,7 @@ usersAPI.get(
   async (c) => {
     const id = c.req.param('id')
     try {
-      const [user] = await db.select(safeUserSelect)
+      const [user] = await db.select(userSelect)
         .from(users)
         .where(eq(users.id, id))
 
@@ -228,7 +230,7 @@ usersAPI.get(
   async (c) => {
     const id = c.req.param('id')
     try {
-      const [user] = await db.select(safeUserSelect)
+      const [user] = await db.select(userSelect)
         .from(users)
         .where(eq(users.id, id))
 
@@ -277,7 +279,7 @@ usersAPI.post(
     const id = c.req.param('id')
     const { duration } = c.req.valid('json')
     try {
-      const [user] = await db.select(safeUserSelect)
+      const [user] = await db.select(userSelect)
         .from(users)
         .where(eq(users.id, id))
 
