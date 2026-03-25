@@ -4,7 +4,7 @@ import { users } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { authMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
-import { USER_ROLES } from '../constants.js'
+import { USER_ROLES, USER_STATUS } from '../constants.js'
 import { serverLogger } from '../utils/logger.js'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
@@ -100,10 +100,18 @@ usersAPI.post('/timeout/:id', zValidator('json', timeoutSchema), async (c) => {
       return c.json({ error: 'User not found' }, 404)
     }
 
+    if (user.role === USER_ROLES.ADMIN || user.role === USER_ROLES.MODERATOR) {
+      return c.json({ error: 'Forbidden. You cannot timeout admin or moderator' }, 403)
+    }
+
+    if (user.id === id) {
+      return c.json({ error: 'Forbidden. You cannot timeout yourself' }, 403)
+    }
+
     const [updatedUser] = await db.update(users)
       .set({
         timeoutEnd: new Date(Date.now() + duration * 60 * 60 * 1000),
-        timeoutStatus: true,
+        status: USER_STATUS.TIMEOUT,
       })
       .where(eq(users.id, id))
       .returning()
