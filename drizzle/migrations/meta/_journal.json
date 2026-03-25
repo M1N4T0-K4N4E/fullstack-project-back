@@ -57,6 +57,13 @@
       "when": 1774456804710,
       "tag": "0007_past_baron_zemo",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774463284592,
+      "tag": "0008_closed_wallop",
+      "breakpoints": true
     }
   ]
 }

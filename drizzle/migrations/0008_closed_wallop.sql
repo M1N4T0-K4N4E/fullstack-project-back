@@ -1,0 +1,1 @@
+ALTER TABLE "user_interactions" ADD COLUMN "user_role" text DEFAULT 'guest' NOT NULL;
