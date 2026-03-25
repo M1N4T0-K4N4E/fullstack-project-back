@@ -118,6 +118,10 @@ const inferUserAction = (method: string, path: string): string => {
   if (method === 'GET' && path.startsWith('/api/posts')) return 'view_posts';
   if (method === 'GET' && path.startsWith('/api/account')) return 'view_account';
   if (method === 'GET' && path.startsWith('/api/users')) return 'view_users';
+  if (method === 'GET' && path === '/api/logs/user') return 'view_user_logs';
+  if (method === 'GET' && path === '/api/logs/server') return 'view_server_logs';
+  if (method === 'GET' && path === '/api/logs/files') return 'view_log_files';
+  if (method === 'GET' && /^\/api\/logs\/files\/.+/.test(path)) return 'view_log_file_content';
   return 'unknown';
 };
 
@@ -137,6 +141,7 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
   const user = c.get('user');
   const userId = user?.id || 'guest';
   const userEmail = user?.email || 'none';
+  const userRole = user?.role || 'guest';
   
   const ip = c.req.header('x-forwarded-for') || 'unknown';
   const userAgent = c.req.header('user-agent') || 'unknown';
@@ -144,6 +149,7 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
   const logContext = {
     userId,
     userEmail,
+    userRole,
     action,
     method,
     path,
@@ -166,6 +172,7 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
     await db.insert(userInteractions).values({
       userId,
       userEmail,
+      userRole,
       action,
       method,
       path,

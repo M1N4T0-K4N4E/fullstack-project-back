@@ -74,6 +74,7 @@ export const userInteractions = pgTable('user_interactions', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull(), // can be 'guest'
   userEmail: text('user_email').notNull(),
+  userRole: text('user_role').notNull().default('guest'),
   action: text('action').notNull().default('unknown'),
   method: text('method').notNull(),
   path: text('path').notNull(),

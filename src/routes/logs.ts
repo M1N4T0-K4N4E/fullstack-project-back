@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { authMiddleware, type Variables } from '../middleware/auth.js'
-import { USER_ROLES } from '../constants.js'
+import { PAGINATION, USER_ROLES } from '../constants.js'
 import { db } from '../db/index.js'
 import { serverLogs, userInteractions } from '../db/schema.js'
 import { desc, sql } from 'drizzle-orm'
@@ -57,6 +57,7 @@ const UserInteractionSchema: OpenAPIV3_1.SchemaObject = {
     id: { type: 'string' },
     userId: { type: 'string' },
     userEmail: { type: 'string' },
+    userRole: { type: 'string' },
     action: { type: 'string' },
     method: { type: 'string' },
     path: { type: 'string' },
@@ -69,8 +70,8 @@ const UserInteractionSchema: OpenAPIV3_1.SchemaObject = {
 };
 
 const PaginationParams = z.object({
-  page: z.string().default('1').transform(Number).pipe(z.number().int().min(1)),
-  limit: z.string().default('20').transform(Number).pipe(z.number().int().min(1).max(100)),
+  page: z.string().default(String(PAGINATION.DEFAULT_PAGE)).transform(Number).pipe(z.number().int().min(PAGINATION.DEFAULT_PAGE)),
+  limit: z.string().default(String(PAGINATION.DEFAULT_LIMIT)).transform(Number).pipe(z.number().int().min(PAGINATION.MIN_LIMIT).max(PAGINATION.MAX_LIMIT)),
 });
 
 const PaginatedLogsResponseSchema: OpenAPIV3_1.ResponseObject = {
@@ -123,14 +124,14 @@ logsAPI.get(
         name: 'page',
         in: 'query',
         required: false,
-        schema: { type: 'integer', default: 1, minimum: 1 },
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_PAGE, minimum: PAGINATION.DEFAULT_PAGE },
         description: 'Page number (starts at 1)',
       },
       {
         name: 'limit',
         in: 'query',
         required: false,
-        schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 },
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_LIMIT, minimum: PAGINATION.MIN_LIMIT, maximum: PAGINATION.MAX_LIMIT },
         description: 'Number of logs per page',
       },
     ],
@@ -173,14 +174,14 @@ logsAPI.get(
         name: 'page',
         in: 'query',
         required: false,
-        schema: { type: 'integer', default: 1, minimum: 1 },
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_PAGE, minimum: PAGINATION.DEFAULT_PAGE },
         description: 'Page number (starts at 1)',
       },
       {
         name: 'limit',
         in: 'query',
         required: false,
-        schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 },
+        schema: { type: 'integer', default: PAGINATION.DEFAULT_LIMIT, minimum: PAGINATION.MIN_LIMIT, maximum: PAGINATION.MAX_LIMIT },
         description: 'Number of interactions per page',
       },
     ],
