@@ -222,7 +222,7 @@ postsAPI.get(
   zValidator('query', PaginationParams),
   async (c) => {
     let allPosts;
-    const user = c.get('user') ?? { id: 'guest', email: 'none', role: USER_ROLES.USER  }
+    const user = c.get('user') ?? { id: 'guest', email: 'guest', role: USER_ROLES.USER  }
     const { page, limit } = c.req.valid('query')
     const offset = (page - 1) * limit
     try {
@@ -366,7 +366,7 @@ postsAPI.get(
   }),
   authGuestMiddleware,
   async (c) => {
-    const user = c.get('user') ?? { id: 'guest', email: 'none' }
+    const user = c.get('user') ?? { id: 'guest', email: 'guest' }
     const id = c.req.param('id')
     try {
       const post = await db.query.posts.findFirst({

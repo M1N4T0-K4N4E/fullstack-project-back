@@ -140,7 +140,7 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
   // Get user info if authenticated
   const user = c.get('user');
   const userId = user?.id || 'guest';
-  const userEmail = user?.email || 'none';
+  const userEmail = user?.email || 'guest';
   const userRole = user?.role || 'guest';
   
   const ip = c.req.header('x-forwarded-for') || 'unknown';
