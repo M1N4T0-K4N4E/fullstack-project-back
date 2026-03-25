@@ -191,7 +191,7 @@ postsAPI.get(
   async (c) => {
     try {
       const allPosts = await db.query.posts.findMany({
-        where: eq(posts.isPublic, true),
+        where: and(eq(posts.isPublic, true), eq(posts.isDeleted, false)),
         with: {
           user: {
             columns: {
@@ -213,7 +213,7 @@ postsAPI.get(
   }
 )
 
-// GET /api/posts/@me - List all current posts
+// GET /api/posts/@me - List all own posts
 postsAPI.get(
   '/@me',
   describeRoute({
@@ -231,7 +231,7 @@ postsAPI.get(
     const user = c.get('user')
     try {
       const allPosts = await db.query.posts.findMany({
-        where: eq(posts.userId, user.id),
+        where: and(eq(posts.userId, user.id), eq(posts.isDeleted, false)),
         with: {
           user: {
             columns: {
@@ -281,7 +281,7 @@ postsAPI.get(
     const id = c.req.param('id')
     try {
       const post = await db.query.posts.findFirst({
-        where: and(eq(posts.id, id), or(eq(posts.isPublic, true), eq(posts.userId, user.id))),
+        where: and(eq(posts.id, id), or(eq(posts.isPublic, true), eq(posts.userId, user.id)), eq(posts.isDeleted, false)),
         with: {
           user: {
             columns: {
