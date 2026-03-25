@@ -189,22 +189,42 @@ postsAPI.get(
     },
   }),
   async (c) => {
+    let allPosts;
+    const user = c.get('user') ?? { id: 'guest', email: 'none', role: USER_ROLES.USER  }
     try {
-      const allPosts = await db.query.posts.findMany({
-        where: and(eq(posts.isPublic, true), eq(posts.isDeleted, false)),
-        with: {
-          user: {
-            columns: {
-              name: true,
+      if (user.role === USER_ROLES.ADMIN) {
+        allPosts = await db.query.posts.findMany({
+          where: eq(posts.isDeleted, false),
+          with: {
+            user: {
+              columns: {
+                name: true,
+              }
             }
+          },
+          columns: {
+            userId: false,
+            createdAt: false,
+            updatedAt: false,
           }
-        },
-        columns: {
-          userId: false,
-          createdAt: false,
-          updatedAt: false,
-        }
-      })
+        })
+      } else {
+        allPosts = await db.query.posts.findMany({
+          where: and(eq(posts.isPublic, true), eq(posts.isDeleted, false)),
+          with: {
+            user: {
+              columns: {
+                name: true,
+              }
+            }
+          },
+          columns: {
+            userId: false,
+            createdAt: false,
+            updatedAt: false,
+          }
+        })
+      }
       return c.json(allPosts)
     } catch (e) {
       serverLogger.error('Failed to fetch posts', { error: e })
