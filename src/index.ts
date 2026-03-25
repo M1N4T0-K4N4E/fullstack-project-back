@@ -11,6 +11,7 @@ import users from './routes/users.js'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { openAPIRouteHandler } from 'hono-openapi'
 import { Scalar } from '@scalar/hono-api-reference'
+import { basicAuth } from 'hono/basic-auth'
 
 const app = new Hono()
 app.use('*', userInteractionLogger)
@@ -55,6 +56,14 @@ app.get(
 )
 
 app.get('/scalar', Scalar({ url: '/doc' }))
+
+app.use(
+  '/scalar/*',
+  basicAuth({
+    username: 'shaderd',
+    password: 'password',
+  })
+)
 
 serve({
   fetch: app.fetch,
