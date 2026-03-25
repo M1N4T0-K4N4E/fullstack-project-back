@@ -558,6 +558,8 @@ authAPI.post(
         return c.json({ error: 'User not found' }, 404);
       }
 
+      c.set('user', user);
+
       const accessToken = await new jose.SignJWT({
         sub: user.id,
         email: user.email,
