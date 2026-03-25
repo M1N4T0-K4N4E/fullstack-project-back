@@ -16,7 +16,7 @@ import { unified } from 'unified'
 import rehypeParse from 'rehype-parse'
 import rehypeSanitize from 'rehype-sanitize'
 import rehypeRemark from 'rehype-remark'
-import remarkStringify from 'rehype-stringify'
+import remarkStringify from 'remark-stringify'
 import { describeRoute } from 'hono-openapi'
 import type { OpenAPIV3_1 } from 'openapi-types'
 
@@ -265,7 +265,7 @@ postsAPI.get(
 
 
       serverLogger.info('Post fetched successfully', { postId: id })
-      return c.json({message: 'Post fetched successfully', post: {...post, vertex: vertexFile, fragment: fragmentFile }}, 200)
+      return c.json({ message: 'Post fetched successfully', post: { ...post, vertex: vertexFile, fragment: fragmentFile } }, 200)
     } catch (e) {
       serverLogger.error('Failed to fetch post detail', { error: e })
       return c.json({ error: 'Failed to fetch post detail' }, 500)
@@ -515,108 +515,104 @@ postsAPI.put(
       return c.json({ error: 'Forbidden. You are timeout.' }, 403)
     }
 
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, id)
+    })
+    if (!post) {
+      serverLogger.error('Post not found', { postId: id })
+      return c.json({ error: 'Post not found' }, 404)
+    }
+    if (post.userId !== user.id) {
+      serverLogger.error('Forbidden. You do not have permission to update this post.', { userId: user.id, postId: id })
+      return c.json({ error: 'Forbidden. You do not have permission to update this post.' }, 403)
+    }
+
+    const { title, context, vertex, fragment } = c.req.valid('json')
+    const uploadedRedisFiles: string[] = []
+
+    console.log(title)
+
+    const sanitizedTitle = title
     try {
-      const post = await db.query.posts.findFirst({
-        where: eq(posts.id, id)
-      })
-      if (!post) {
-        serverLogger.error('Post not found', { postId: id })
-        return c.json({ error: 'Post not found' }, 404)
-      }
-      if (post.userId !== user.id) {
-        serverLogger.error('Forbidden. You do not have permission to update this post.', { userId: user.id, postId: id })
-        return c.json({ error: 'Forbidden. You do not have permission to update this post.' }, 403)
-      }
-
-      const { title, context, vertex, fragment } = c.req.valid('json')
-      const uploadedRedisFiles: string[] = []
-
-      const sanitizedTitle = unified()
-        .use(rehypeParse, {fragment: true})
-        .use(rehypeSanitize)
+      console.log(context)
+      const sanitizedContext = await unified()
+        .use(rehypeParse)
+        // .use(rehypeSanitize)
         .use(rehypeRemark)
         .use(remarkStringify)
-        .processSync(title)
-      console.log(sanitizedTitle.result)
+        .process(context)
+      console.log(sanitizedContext)
 
-      const sanitizedContext = unified()
-        .use(rehypeParse, {fragment: true})
-        .use(rehypeSanitize)
-        .use(rehypeRemark)
-        .use(remarkStringify)
-        .processSync(context)
-      console.log(sanitizedContext.result)
-
-       let error: GlslSyntaxError | undefined;
+      let error: GlslSyntaxError | undefined;
 
       if (vertex) {
-            try {
-              parse(vertex)
-            } catch (e) {
-              error = e as GlslSyntaxError
-            }
+        try {
+          parse(vertex)
+        } catch (e) {
+          error = e as GlslSyntaxError
+        }
 
-            if (error) {
-              serverLogger.error('Invalid GLSL syntax', { error })
-              return c.json({ error: 'Invalid GLSL syntax' }, 400)
-            }
-          }
+        if (error) {
+          serverLogger.error('Invalid GLSL syntax', { error })
+          return c.json({ error: 'Invalid GLSL syntax' }, 400)
+        }
+      }
 
-          if (fragment) {
-            try {
-              parse(fragment)
-            } catch (e) {
-              error = e as GlslSyntaxError
-            }
+      if (fragment) {
+        try {
+          parse(fragment)
+        } catch (e) {
+          error = e as GlslSyntaxError
+        }
 
-            if (error) {
-              serverLogger.error('Invalid GLSL syntax', { error })
-              return c.json({ error: 'Invalid GLSL syntax' }, 400)
-            }
-          }
+        if (error) {
+          serverLogger.error('Invalid GLSL syntax', { error })
+          return c.json({ error: 'Invalid GLSL syntax' }, 400)
+        }
+      }
 
       try {
         await db.transaction(async (tx) => {
           await tx.update(posts)
             .set({
-              title: title ?? post.title,
-              context: context ?? post.context,
+              title: sanitizedTitle,
+              context: sanitizedContext.result + '',
               updatedAt: new Date()
             })
             .where(eq(posts.id, id))
 
-         
+
 
           const vertexKey = `post-file:${id}:vertex`
           const fragmentKey = `post-file:${id}:fragment`
 
-          
+
           if (vertex) {
             const redisFileVertex: ShaderFile = {
-            content: vertex
+              content: vertex
+            }
+
+            const oldVertex = await redis.get(vertexKey)
+            if (oldVertex) {
+              await redis.del(vertexKey)
+            }
+            await redis.set(vertexKey, JSON.stringify(redisFileVertex))
+            uploadedRedisFiles.push(vertexKey)
           }
 
-          const oldVertex = await redis.get(vertexKey)
-          if (oldVertex) {
-            await redis.del(vertexKey)
-          }
-          await redis.set(vertexKey, JSON.stringify(redisFileVertex))
-          uploadedRedisFiles.push(vertexKey)
-        }
+          if (fragment) {
+            const redisFileFragment: ShaderFile = {
+              content: fragment
+            }
 
-        if (fragment) {
-          const redisFileFragment: ShaderFile = {
-            content: fragment
+            const oldFragment = await redis.get(fragmentKey)
+            if (oldFragment) {
+              await redis.del(fragmentKey)
+            }
+            await redis.set(fragmentKey, JSON.stringify(redisFileFragment))
+            uploadedRedisFiles.push(fragmentKey)
           }
-
-          const oldFragment = await redis.get(fragmentKey)
-          if (oldFragment) {
-            await redis.del(fragmentKey)
-          }
-        await redis.set(fragmentKey, JSON.stringify(redisFileFragment))
-          uploadedRedisFiles.push(fragmentKey)
-        }
-      })
+        })
 
         serverLogger.info('Post updated successfully', { postId: id, fileCount: uploadedRedisFiles.length })
         return c.json({ message: 'Post updated successfully' }, 200)
@@ -626,7 +622,7 @@ postsAPI.put(
         return c.json({ error: 'Failed to update post' }, 500)
       }
     } catch (e) {
-      serverLogger.error('Failed to fetch post for update', { error: e })
+      serverLogger.error('Failed to update post', { error: e })
       return c.json({ error: 'Failed to update post' }, 500)
     }
   }
@@ -675,7 +671,7 @@ postsAPI.put(
         serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
         return c.json({ error: 'Forbidden. You are timeout.' }, 403)
       }
-      
+
       const like = await db.query.postLikes.findFirst({
         where: eq(postLikes.userId, user.id)
       })
@@ -697,11 +693,11 @@ postsAPI.put(
           })
           .returning()
         await db.update(posts)
-        .set({
-          like: post.like + 1
-        })
-        .where(eq(posts.id, id))
-        .returning()
+          .set({
+            like: post.like + 1
+          })
+          .where(eq(posts.id, id))
+          .returning()
       }
 
       serverLogger.info('Post liked successfully', { postId: id })
@@ -786,11 +782,11 @@ postsAPI.put(
           })
           .returning()
         await db.update(posts)
-        .set({
-          dislike: post.dislike + 1
-        })
-        .where(eq(posts.id, id))
-        .returning()
+          .set({
+            dislike: post.dislike + 1
+          })
+          .where(eq(posts.id, id))
+          .returning()
       }
 
       serverLogger.info('Post disliked successfully', { postId: id })
