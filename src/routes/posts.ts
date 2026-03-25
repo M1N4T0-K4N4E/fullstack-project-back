@@ -5,7 +5,7 @@ import { postDislikes, postLikes, posts, users } from '../db/schema.js'
 import { and, eq, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
-import { authMiddleware } from '../middleware/auth.js'
+import { authMiddleware, authGuestMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
 import { USER_ROLES, USER_STATUS, type ShaderFile } from '../constants.js'
 import redis from '../utils/redis.js'
@@ -275,11 +275,13 @@ postsAPI.get(
       500: ErrorResponseSchema,
     },
   }),
+  authGuestMiddleware,
   async (c) => {
+    const user = c.get('user') ?? { id: 'guest', email: 'none' }
     const id = c.req.param('id')
     try {
       const post = await db.query.posts.findFirst({
-        where: and(eq(posts.id, id), or(eq(posts.isPublic, true), eq(posts.userId, c.get('user').id))),
+        where: and(eq(posts.id, id), or(eq(posts.isPublic, true), eq(posts.userId, user.id))),
         with: {
           user: {
             columns: {
@@ -617,7 +619,7 @@ postsAPI.put(
           await tx.update(posts)
             .set({
               title: sanitizedTitle,
-              context: sanitizedContext.result + '',
+              context: String(sanitizedContext.result ?? ''),
               updatedAt: new Date()
             })
             .where(eq(posts.id, id))

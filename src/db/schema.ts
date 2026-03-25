@@ -9,7 +9,7 @@ const createId = init({
 });
 
 export const users = pgTable('users', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: text('id').primaryKey().$defaultFn(() => createId()),
   googleId: text('google_id').unique(),
   email: text('email').notNull().unique(),
   password: text('password'),
@@ -24,13 +24,13 @@ export const users = pgTable('users', {
 
 export const posts = pgTable('posts', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
-  userId: uuid('user_id').notNull().references(() => users.id),
+  userId: text('user_id').notNull().references(() => users.id),
   title: text('title').notNull(),
   context: text('context'),
   thumbnail: text('thumbnail'),
   like: integer('like').default(0).notNull(),
   dislike: integer('dislike').default(0).notNull(),
-  isPublic: boolean('is_public').default(false).notNull(),
+  isPublic: boolean('is_public').default(false),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 
@@ -38,14 +38,14 @@ export const posts = pgTable('posts', {
 
 export const postLikes = pgTable('post_likes', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow(),
 });
 
 export const postDislikes = pgTable('post_dislikes', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow(),
 });

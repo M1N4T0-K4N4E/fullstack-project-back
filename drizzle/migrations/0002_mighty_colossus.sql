@@ -1,0 +1,1 @@
+ALTER TABLE "posts" ALTER COLUMN "is_public" DROP NOT NULL;
