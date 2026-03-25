@@ -24,5 +24,12 @@ export const JWT_EXPIRATION = {
 
 export const PASSWORD_MIN_LENGTH = 15;
 
+export const PAGINATION = {
+  DEFAULT_PAGE: 1,
+  DEFAULT_LIMIT: 20,
+  MAX_LIMIT: 100,
+  MIN_LIMIT: 1,
+} as const;
+
 export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
 export type UserStatus = typeof USER_STATUS[keyof typeof USER_STATUS];
