@@ -1,5 +1,5 @@
 import { pgTable, text, integer, timestamp, uuid, jsonb, boolean } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, } from 'drizzle-orm';
 import { init } from '@paralleldrive/cuid2';
 import { USER_ROLES, USER_STATUS } from '../constants.js';
 
@@ -25,7 +25,7 @@ export const users = pgTable('users', {
 export const posts = pgTable('posts', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
   userId: uuid('user_id').notNull().references(() => users.id),
-  title: text('title').notNull(), 
+  title: text('title').notNull(),
   context: text('context'),
   thumbnail: text('thumbnail'),
   like: integer('like').default(0).notNull(),
@@ -38,15 +38,15 @@ export const posts = pgTable('posts', {
 
 export const postLikes = pgTable('post_likes', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
-  userId: uuid('user_id').notNull().references(() => users.id),
-  postId: text('post_id').notNull().references(() => posts.id),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow(),
 });
 
 export const postDislikes = pgTable('post_dislikes', {
   id: text('id').primaryKey().$defaultFn(() => createId()),
-  userId: uuid('user_id').notNull().references(() => users.id),
-  postId: text('post_id').notNull().references(() => posts.id),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

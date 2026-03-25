@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { serverLogger } from '../utils/logger.js'
 import { db } from '../db/index.js'
 import { postDislikes, postLikes, posts, users } from '../db/schema.js'
-import { eq } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import { authMiddleware } from '../middleware/auth.js'
@@ -191,6 +191,47 @@ postsAPI.get(
   async (c) => {
     try {
       const allPosts = await db.query.posts.findMany({
+        where: eq(posts.isPublic, true),
+        with: {
+          user: {
+            columns: {
+              name: true,
+            }
+          }
+        },
+        columns: {
+          userId: false,
+          createdAt: false,
+          updatedAt: false,
+        }
+      })
+      return c.json(allPosts)
+    } catch (e) {
+      serverLogger.error('Failed to fetch posts', { error: e })
+      return c.json({ error: 'Failed to fetch posts' }, 500)
+    }
+  }
+)
+
+// GET /api/posts/@me - List all current posts
+postsAPI.get(
+  '/@me',
+  describeRoute({
+    operationId: 'listPosts',
+    tags: ['posts'],
+    summary: 'List all posts',
+    description: 'Get a list of all posts with user info',
+    responses: {
+      200: PostListResponseSchema,
+      500: ErrorResponseSchema,
+    },
+  }),
+  authMiddleware,
+  async (c) => {
+    const user = c.get('user')
+    try {
+      const allPosts = await db.query.posts.findMany({
+        where: eq(posts.userId, user.id),
         with: {
           user: {
             columns: {
@@ -238,7 +279,7 @@ postsAPI.get(
     const id = c.req.param('id')
     try {
       const post = await db.query.posts.findFirst({
-        where: eq(posts.id, id),
+        where: and(eq(posts.id, id), or(eq(posts.isPublic, true), eq(posts.userId, c.get('user').id))),
         with: {
           user: {
             columns: {
@@ -588,28 +629,22 @@ postsAPI.put(
 
 
           if (vertex) {
-            const redisFileVertex: ShaderFile = {
-              content: vertex
-            }
 
             const oldVertex = await redis.get(vertexKey)
             if (oldVertex) {
               await redis.del(vertexKey)
             }
-            await redis.set(vertexKey, JSON.stringify(redisFileVertex))
+            await redis.set(vertexKey, vertex)
             uploadedRedisFiles.push(vertexKey)
           }
 
           if (fragment) {
-            const redisFileFragment: ShaderFile = {
-              content: fragment
-            }
 
             const oldFragment = await redis.get(fragmentKey)
             if (oldFragment) {
               await redis.del(fragmentKey)
             }
-            await redis.set(fragmentKey, JSON.stringify(redisFileFragment))
+            await redis.set(fragmentKey, fragment)
             uploadedRedisFiles.push(fragmentKey)
           }
         })
@@ -828,16 +863,16 @@ postsAPI.delete(
     const id = c.req.param('id')
     const user = c.get('user')
 
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, id)
+    })
+    if (!post) return c.json({ error: 'Post not found' }, 404)
+
+    if (user.role !== USER_ROLES.ADMIN && post.userId !== user.id) {
+      return c.json({ error: 'Forbidden. You do not have permission to delete this post.' }, 403)
+    }
+
     try {
-      const post = await db.query.posts.findFirst({
-        where: eq(posts.id, id)
-      })
-      if (!post) return c.json({ error: 'Post not found' }, 404)
-
-      if (user.role !== USER_ROLES.ADMIN && post.userId !== user.id) {
-        return c.json({ error: 'Forbidden. You do not have permission to delete this post.' }, 403)
-      }
-
       const fileKeys = await redis.keys(`post-file:${id}:*`)
       if (fileKeys.length > 0) {
         await redis.del(...fileKeys)
