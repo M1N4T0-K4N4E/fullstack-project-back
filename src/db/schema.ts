@@ -29,8 +29,23 @@ export const posts = pgTable('posts', {
   context: text('context'),
   thumbnail: text('thumbnail'),
   like: integer('like').default(0).notNull(),
+  dislike: integer('dislike').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const postLikes = pgTable('post_likes', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  postId: text('post_id').notNull().references(() => posts.id),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const postDislikes = pgTable('post_dislikes', {
+  id: text('id').primaryKey().$defaultFn(() => createId()),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  postId: text('post_id').notNull().references(() => posts.id),
+  createdAt: timestamp('created_at').defaultNow(),
 });
 
 export const usersRelations = relations(users, ({ many }) => ({

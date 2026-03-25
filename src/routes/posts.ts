@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { serverLogger } from '../utils/logger.js'
 import { db } from '../db/index.js'
-import { posts, users } from '../db/schema.js'
+import { postDislikes, posts, users } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
@@ -416,6 +416,69 @@ postsAPI.put('/like/:id', authMiddleware, async (c) => {
   } catch (e) {
     serverLogger.error('Failed to fetch post for like', { error: e })
     return c.json({ error: 'Failed to like post' }, 500)
+  }
+})
+
+// PUT /api/post/dislike/:id - Dislike an post
+postsAPI.put('/dislike/:id', authMiddleware, async (c) => {
+  const id = c.req.param('id')
+  const user = c.get('user')
+
+  if (user.status == USER_STATUS.TIMEOUT) {
+    serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
+    return c.json({ error: 'Forbidden. You are timeout.' }, 403)
+  }
+
+  try {
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, id)
+    })
+    if (!post) {
+      serverLogger.error('Post not found', { postId: id })
+      return c.json({ error: 'Post not found' }, 404)
+    }
+
+
+    const [updatedPost] = await db.update(posts)
+      .set({
+        dislike: post.dislike + 1
+      })
+      .where(eq(posts.id, id))
+      .returning()
+    
+    const dislike = await db.query.postDislikes.findFirst({
+      where: eq(postDislikes.userId, user.id)
+    })
+    if (dislike) {
+      await db.delete(postDislikes)
+        .where(eq(postDislikes.userId, user.id))
+        .returning()
+      await db.update(posts)
+        .set({
+          dislike: post.dislike - 1
+        })
+        .where(eq(posts.id, id))
+        .returning()
+    } else {
+      await db.insert(postDislikes)
+        .values({
+          userId: user.id,
+          postId: id
+        })
+        .returning()
+        await db.update(posts)
+      .set({
+        dislike: post.dislike + 1
+      })
+      .where(eq(posts.id, id))
+      .returning()
+    }
+    
+    serverLogger.info('Post disliked successfully', { postId: id })
+    return c.json({ message: 'Post disliked successfully' }, 200)
+  } catch (e) {
+    serverLogger.error('Failed to fetch post for dislike', { error: e })
+    return c.json({ error: 'Failed to dislike post' }, 500)
   }
 })
 

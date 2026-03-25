@@ -23,7 +23,7 @@ app.use('*', cors({
 app.use('/uploads/*', serveStatic({ root: './' }))
 
 app.get('/', (c) => {
-  return c.text('Tickale API')
+  return c.text('Shaderd API')
 })
 
 // Mount API routes
