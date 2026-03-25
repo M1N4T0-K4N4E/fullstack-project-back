@@ -7,10 +7,9 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
 import argon2 from 'argon2'
-
 import { authMiddleware } from '../middleware/auth.js'
 import type { Variables } from '../middleware/auth.js'
-import { ARGON2_OPTIONS, PASSWORD_MIN_LENGTH } from '../constants.js'
+import { ARGON2_OPTIONS, PASSWORD_MIN_LENGTH, USER_ROLES, USER_STATUS } from '../constants.js'
 
 const accountAPI = new Hono<{ Variables: Variables }>()
 const secret = new TextEncoder().encode(process.env.JWT_SECRET);
@@ -25,6 +24,10 @@ const updateAccountSchema = z.object({
 const changePasswordSchema = z.object({
   currentPassword: z.string(),
   newPassword: z.string().min(PASSWORD_MIN_LENGTH),
+});
+
+const banSchema = z.object({
+  userId: z.string(),
 });
 
 // GET /api/account - Get account info
@@ -121,5 +124,54 @@ accountAPI.put(
     }
   }
 );
+
+// PUT /api/account/ban - Ban account
+accountAPI.put(
+  '/ban',
+  zValidator('json', banSchema, (result, c) => {
+    if (!result.success) return c.json({ error: 'Invalid input' }, 400);
+  }),
+  async (c) => {
+    const user = c.get('user');
+    const { userId } = c.req.valid('json');
+
+    try {
+      if (user.role !== USER_ROLES.ADMIN) {
+        return c.json({ error: 'Forbidden' }, 403);
+      }
+
+      const targetUser = await db.query.users.findFirst({
+        where: eq(users.id, userId)
+      });
+
+      if (!targetUser) {
+        return c.json({ error: 'User not found' }, 404);
+      }
+
+      if (targetUser.role === USER_ROLES.ADMIN) {
+        return c.json({ error: 'Forbidden. You cannot ban admin' }, 403);
+      }
+
+      if (targetUser.id === user.id) {
+        return c.json({ error: 'Forbidden. You cannot ban yourself' }, 403);
+      }
+
+      await db.update(users)
+        .set({
+          status: USER_STATUS.BANNED,
+          timeoutEnd: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, userId));
+
+      serverLogger.info('User banned successfully', { user: targetUser });
+      return c.json({ message: 'User banned successfully' }, 200);
+    } catch (e) {
+      serverLogger.error('User ban error', { error: e });
+      return c.json({ error: 'Failed to ban user' }, 500);
+    }
+  }
+);
+  
 
 export default accountAPI
