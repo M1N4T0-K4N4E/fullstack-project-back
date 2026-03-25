@@ -10,6 +10,7 @@ import auth from './routes/auth.js'
 import users from './routes/users.js'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { openAPIRouteHandler } from 'hono-openapi'
+import { Scalar } from '@scalar/hono-api-reference'
 
 const app = new Hono()
 app.use('*', userInteractionLogger)
@@ -52,6 +53,8 @@ app.get(
     },
   })
 )
+
+app.get('/scalar', Scalar({ url: '/doc' }))
 
 serve({
   fetch: app.fetch,

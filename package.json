@@ -14,6 +14,7 @@
     "@hono/zod-validator": "^0.7.6",
     "@paralleldrive/cuid2": "^3.3.0",
     "@rcmade/hono-docs": "^1.0.32",
+    "@scalar/hono-api-reference": "^0.10.4",
     "@shaderfrog/glsl-parser": "^7.0.1",
     "arctic": "^3.7.0",
     "argon2": "^0.44.0",
