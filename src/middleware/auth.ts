@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import redis from '../utils/redis.js';
+import { USER_STATUS } from '../constants.js';
 
 export type Variables = {
   user: typeof users.$inferSelect;
@@ -31,24 +32,29 @@ export const authMiddleware = createMiddleware<{ Variables: Variables }>(async (
     }
 
     const isBlacklisted = await redis.get(token);
-
+    
     if (isBlacklisted) {
       return c.json({ error: 'Invalid token' }, 401);
     }
-
+    
     const user = await db.query.users.findFirst({
       where: eq(users.id, userId)
     });
-
+    
     if (!user) {
       return c.json({ error: 'User not found' }, 404);
+    }
+    
+    const isBanned = user.status == USER_STATUS.BANNED;
+    if (isBanned) {
+      return c.json({ error: 'Forbidden. You are banned.' }, 403);
     }
 
     // timeout status replace
     if (user.timeoutEnd && user.timeoutEnd <= new Date()) {
       await db.update(users)
         .set({
-          timeoutStatus: false,
+          status: USER_STATUS.ACTIVE,
           timeoutEnd: null,
         })
         .where(eq(users.id, userId))
