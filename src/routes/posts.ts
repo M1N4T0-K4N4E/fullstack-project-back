@@ -306,9 +306,15 @@ postsAPI.get(
         redis.get(fragmentKey),
       ])
 
+      const liked = await db.query.postLikes.findFirst({
+        where: and(eq(postLikes.postId, id), eq(postLikes.userId, user.id))
+      })
+
+      const isUserLiked = liked ? true : false
+
 
       serverLogger.info('Post fetched successfully', { postId: id })
-      return c.json({ message: 'Post fetched successfully', post: { ...post, vertex: vertexFile, fragment: fragmentFile } }, 200)
+      return c.json({ message: 'Post fetched successfully', post: { ...post, vertex: vertexFile, fragment: fragmentFile, isUserLiked } }, 200)
     } catch (e) {
       serverLogger.error('Failed to fetch post detail', { error: e })
       return c.json({ error: 'Failed to fetch post detail' }, 500)
@@ -662,6 +668,68 @@ postsAPI.put(
       serverLogger.error('Failed to update post', { error: e })
       return c.json({ error: 'Failed to update post' }, 500)
     }
+  }
+)
+
+// PUT /api/posts/:id/publish - Publish a post
+postsAPI.put(
+  '/posts/:id/publish',
+  describeRoute({
+    operationId: 'publishPost',
+    tags: ['posts'],
+    summary: 'Publish a post',
+    description: 'Make a post public',
+    security: [{ Bearer: [] }],
+    parameters: [],
+    responses: {
+      200: MessageResponseSchema,
+      401: ErrorResponseSchema,
+      403: ErrorResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
+
+  }),
+  authMiddleware,
+  async (c) => {
+    const id = c.req.param('id')
+    const user = c.get('user')
+    const postId = c.req.param('id')
+
+    if (user.status == USER_STATUS.TIMEOUT) {
+      serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
+      return c.json({ error: 'Forbidden. You are timeout.' }, 403)
+    }
+
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, postId)
+    })
+
+    if (!post) {
+      serverLogger.error('Post not found', { postId })
+      return c.json({ error: 'Post not found' }, 404)
+    }
+
+    if (post.userId !== user.id) {
+      serverLogger.error('Forbidden. You do not have permission to publish this post.', { userId: user.id, postId })
+      return c.json({ error: 'Forbidden. You do not have permission to publish this post.' }, 403)
+    }
+
+    try {
+      await db.update(posts)
+        .set({
+          isPublic: true,
+          updatedAt: new Date()
+        })
+        .where(eq(posts.id, postId))
+        .returning()
+    } catch (e) {
+      serverLogger.error('Failed to publish post', { error: e })
+      return c.json({ error: 'Failed to publish post' }, 500)
+    }
+
+    serverLogger.info('Post published successfully', { postId })
+    return c.json({ message: 'Post published successfully' }, 200)
   }
 )
 
