@@ -6,7 +6,7 @@ export const USER_ROLES = {
 
 export const USER_STATUS = {
   ACTIVE: 'active',
-  TIMEOUT: 'timeout',
+  TIMEOUT: 'timed_out',
   BANNED: 'banned',
 } as const;
 
