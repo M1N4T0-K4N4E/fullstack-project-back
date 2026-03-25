@@ -22,10 +22,6 @@ export const JWT_EXPIRATION = {
   REFRESH_TOKEN_REDIS: 7 * 24 * 60 * 60, // 7 days in seconds
 } as const;
 
-export interface ShaderFile {
-  content: string;
-}
-
 export const PASSWORD_MIN_LENGTH = 15;
 
 export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
