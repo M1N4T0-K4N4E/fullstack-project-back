@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { serverLogger } from '../utils/logger.js'
 import { db } from '../db/index.js'
-import { postDislikes, posts, users } from '../db/schema.js'
+import { postDislikes, postLikes, posts, users } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { zValidator } from '@hono/zod-validator'
@@ -665,13 +665,34 @@ postsAPI.put(
         serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
         return c.json({ error: 'Forbidden. You are timeout.' }, 403)
       }
-
-      const [updatedPost] = await db.update(posts)
+      
+      const like = await db.query.postLikes.findFirst({
+        where: eq(postLikes.userId, user.id)
+      })
+      if (like) {
+        await db.delete(postLikes)
+          .where(eq(postLikes.userId, user.id))
+          .returning()
+        await db.update(posts)
+          .set({
+            like: post.like - 1
+          })
+          .where(eq(posts.id, id))
+          .returning()
+      } else {
+        await db.insert(postLikes)
+          .values({
+            userId: user.id,
+            postId: id
+          })
+          .returning()
+        await db.update(posts)
         .set({
           like: post.like + 1
         })
         .where(eq(posts.id, id))
         .returning()
+      }
 
       serverLogger.info('Post liked successfully', { postId: id })
       return c.json({ message: 'Post liked successfully' }, 200)
