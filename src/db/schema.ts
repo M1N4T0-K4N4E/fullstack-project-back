@@ -1,6 +1,12 @@
 import { pgTable, text, integer, timestamp, uuid, jsonb, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { USER_ROLES } from '../constants.js';
+import { init } from '@paralleldrive/cuid2';
+import { USER_ROLES, USER_STATUS } from '../constants.js';
+
+const createId = init({
+  random: Math.random,
+  length: 10,
+});
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -10,18 +16,18 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   role: text('role').notNull().default(USER_ROLES.USER),
   avatarUrl: text('avatar_url'),
-  timeoutStatus: boolean('timeout_status').default(false),
+  status: text('status').notNull().default(USER_STATUS.ACTIVE),
   timeoutEnd: timestamp('timeout_end'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 export const posts = pgTable('posts', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: text('id').primaryKey().$defaultFn(() => createId()),
   userId: uuid('user_id').notNull().references(() => users.id),
   title: text('title').notNull(), 
-  context: text('context').notNull(),
-  picture: text('picture').notNull(),
+  context: text('context'),
+  thumbnail: text('thumbnail'),
   like: integer('like').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
