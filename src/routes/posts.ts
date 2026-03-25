@@ -948,7 +948,13 @@ postsAPI.delete(
         await redis.del(...fileKeys)
       }
 
-      await db.delete(posts).where(eq(posts.id, id))
+      // await db.delete(posts).where(eq(posts.id, id))
+      await db.update(posts)
+        .set({
+          isDeleted: true,
+          updatedAt: new Date()
+        })
+        .where(eq(posts.id, id))
       serverLogger.info('Post deleted successfully', { postId: id })
       return c.json({ message: 'Post deleted' }, 200)
     } catch (e) {
