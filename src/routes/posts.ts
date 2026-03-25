@@ -19,6 +19,7 @@ import rehypeRemark from 'rehype-remark'
 import remarkStringify from 'remark-stringify'
 import { describeRoute } from 'hono-openapi'
 import type { OpenAPIV3_1 } from 'openapi-types'
+import { create } from 'domain'
 
 
 const postsAPI = new Hono<{ Variables: Variables }>()
@@ -62,6 +63,7 @@ const PostSchema: OpenAPIV3_1.SchemaObject = {
     thumbnail: { type: ['string', 'null'] },
     like: { type: 'integer' },
     dislike: { type: 'integer' },
+    createdAt: { type: 'string' },
     user: {
       type: 'object',
       properties: {
@@ -102,6 +104,7 @@ const PostDetailResponseSchema: OpenAPIV3_1.ResponseObject = {
               dislike: { type: 'integer' },
               vertex: { type: ['string', 'null'] },
               fragment: { type: ['string', 'null'] },
+              createdAt: { type: 'string' },
               user: {
                 type: 'object',
                 properties: {
@@ -205,7 +208,6 @@ postsAPI.get(
           },
           columns: {
             userId: false,
-            createdAt: false,
             updatedAt: false,
           }
         })
@@ -221,7 +223,6 @@ postsAPI.get(
           },
           columns: {
             userId: false,
-            createdAt: false,
             updatedAt: false,
           }
         })
@@ -263,7 +264,6 @@ postsAPI.get(
         },
         columns: {
           userId: false,
-          createdAt: false,
           updatedAt: false,
         }
       })
