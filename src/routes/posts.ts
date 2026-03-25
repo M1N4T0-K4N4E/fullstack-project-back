@@ -188,6 +188,7 @@ postsAPI.get(
       500: ErrorResponseSchema,
     },
   }),
+  authGuestMiddleware,
   async (c) => {
     let allPosts;
     const user = c.get('user') ?? { id: 'guest', email: 'none', role: USER_ROLES.USER  }
@@ -225,6 +226,7 @@ postsAPI.get(
           }
         })
       }
+      console.log(allPosts)
       return c.json(allPosts)
     } catch (e) {
       serverLogger.error('Failed to fetch posts', { error: e })
