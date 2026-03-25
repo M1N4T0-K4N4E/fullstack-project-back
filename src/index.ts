@@ -24,6 +24,7 @@ app.use('*', cors({
 }))
 
 app.use('/files/posts/*', serveStatic({ root: './' }))
+app.use('/logs/*', serveStatic({ root: './' }))
 
 app.get('/', (c) => {
   return c.text('Shaderd API')
