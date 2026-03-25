@@ -102,6 +102,25 @@ export const userLogger = winston.createLogger({
   ],
 });
 
+const inferUserAction = (method: string, path: string): string => {
+  if (method === 'POST' && path === '/api/posts') return 'create_post';
+  if (method === 'PUT' && /^\/api\/posts\/like\/.+/.test(path)) return 'like_post';
+  if (method === 'PUT' && /^\/api\/posts\/dislike\/.+/.test(path)) return 'dislike_post';
+  if (method === 'PUT' && path === '/api/account') return 'update_account';
+  if (method === 'PUT' && path === '/api/account/password') return 'change_password';
+  if (method === 'POST' && /^\/api\/auth\/register$/.test(path)) return 'register';
+  if ((method === 'POST' || method === 'GET') && /^\/api\/auth\/(login|google)$/.test(path)) return 'login';
+  if (method === 'POST' && path === '/api/auth/logout') return 'logout';
+  if (method === 'POST' && path === '/api/auth/refresh') return 'refresh_token';
+  if (method === 'PUT' && /^\/api\/posts\/.+\/thumbnail$/.test(path)) return 'update_post_thumbnail';
+  if (method === 'PUT' && /^\/api\/posts\/.+/.test(path)) return 'update_post';
+  if (method === 'DELETE' && /^\/api\/posts\/.+/.test(path)) return 'delete_post';
+  if (method === 'GET' && path.startsWith('/api/posts')) return 'view_posts';
+  if (method === 'GET' && path.startsWith('/api/account')) return 'view_account';
+  if (method === 'GET' && path.startsWith('/api/users')) return 'view_users';
+  return 'unknown';
+};
+
 // Middleware to log all API requests as user/guest interactions
 export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
   const start = Date.now();
@@ -112,6 +131,7 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
   const method = c.req.method;
   const path = new URL(c.req.url).pathname; // use pathname for cleaner logs
   const status = c.res.status;
+  const action = inferUserAction(method, path);
   
   // Get user info if authenticated
   const user = c.get('user');
@@ -124,6 +144,7 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
   const logContext = {
     userId,
     userEmail,
+    action,
     method,
     path,
     status,
@@ -145,6 +166,7 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
     await db.insert(userInteractions).values({
       userId,
       userEmail,
+      action,
       method,
       path,
       status,

@@ -3,12 +3,14 @@ import { authMiddleware, type Variables } from '../middleware/auth.js'
 import { USER_ROLES } from '../constants.js'
 import { db } from '../db/index.js'
 import { serverLogs, userInteractions } from '../db/schema.js'
-import { desc } from 'drizzle-orm'
+import { desc, sql } from 'drizzle-orm'
 import { describeRoute } from 'hono-openapi'
 import type { OpenAPIV3_1 } from 'openapi-types'
 import { serverLogger } from '../utils/logger.js'
 import * as fs from 'fs'
 import path from 'path'
+import { z } from 'zod'
+import { zValidator } from '@hono/zod-validator'
 
 const logsAPI = new Hono<{ Variables: Variables }>()
 
@@ -55,6 +57,7 @@ const UserInteractionSchema: OpenAPIV3_1.SchemaObject = {
     id: { type: 'string' },
     userId: { type: 'string' },
     userEmail: { type: 'string' },
+    action: { type: 'string' },
     method: { type: 'string' },
     path: { type: 'string' },
     status: { type: 'integer' },
@@ -65,33 +68,90 @@ const UserInteractionSchema: OpenAPIV3_1.SchemaObject = {
   },
 };
 
-// GET /api/logs/server - Get server logs from DB
+const PaginationParams = z.object({
+  page: z.string().default('1').transform(Number).pipe(z.number().int().min(1)),
+  limit: z.string().default('20').transform(Number).pipe(z.number().int().min(1).max(100)),
+});
+
+const PaginatedLogsResponseSchema: OpenAPIV3_1.ResponseObject = {
+  description: 'Paginated logs list',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          data: { type: 'array', items: ServerLogSchema },
+          total: { type: 'integer' },
+          page: { type: 'integer' },
+          limit: { type: 'integer' },
+          totalPages: { type: 'integer' },
+        },
+      },
+    },
+  },
+};
+
+const PaginatedInteractionsResponseSchema: OpenAPIV3_1.ResponseObject = {
+  description: 'Paginated user interactions list',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          data: { type: 'array', items: UserInteractionSchema },
+          total: { type: 'integer' },
+          page: { type: 'integer' },
+          limit: { type: 'integer' },
+          totalPages: { type: 'integer' },
+        },
+      },
+    },
+  },
+};
+
+// GET /api/logs/server - Get server logs from DB (paginated)
 logsAPI.get(
   '/server',
   describeRoute({
     operationId: 'getServerLogs',
     tags: ['logs'],
-    summary: 'Get server logs',
-    description: 'Fetch the most recent server logs from the database (admin only)',
+    summary: 'Get server logs (paginated)',
+    description: 'Fetch server logs from the database with pagination (admin only)',
     security: [{ Bearer: [] }],
-    responses: {
-      200: {
-        description: 'Server logs list',
-        content: {
-          'application/json': {
-            schema: { type: 'array', items: ServerLogSchema },
-          },
-        },
+    parameters: [
+      {
+        name: 'page',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: 1, minimum: 1 },
+        description: 'Page number (starts at 1)',
       },
+      {
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 },
+        description: 'Number of logs per page',
+      },
+    ],
+    responses: {
+      200: PaginatedLogsResponseSchema,
       401: ErrorResponseSchema,
       403: ErrorResponseSchema,
       500: ErrorResponseSchema,
     },
   }),
+  zValidator('query', PaginationParams),
   async (c) => {
     try {
-      const logs = await db.select().from(serverLogs).orderBy(desc(serverLogs.createdAt)).limit(100)
-      return c.json(logs)
+      const { page, limit } = c.req.valid('query')
+      const offset = (page - 1) * limit
+      
+      const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(serverLogs)
+      const logs = await db.select().from(serverLogs).orderBy(desc(serverLogs.createdAt)).limit(limit).offset(offset)
+      
+      const totalPages = Math.ceil(count / limit)
+      return c.json({ data: logs, total: count, page, limit, totalPages }, 200)
     } catch (e) {
       serverLogger.error('Failed to fetch server logs', { error: e })
       return c.json({ error: 'Failed to fetch server logs' }, 500)
@@ -99,33 +159,49 @@ logsAPI.get(
   }
 )
 
-// GET /api/logs/user - Get user interactions from DB
+// GET /api/logs/user - Get user interactions from DB (paginated)
 logsAPI.get(
   '/user',
   describeRoute({
     operationId: 'getUserInteractions',
     tags: ['logs'],
-    summary: 'Get user interactions',
-    description: 'Fetch the most recent user interactions from the database (admin only)',
+    summary: 'Get user interactions (paginated)',
+    description: 'Fetch user interactions from the database with pagination (admin only)',
     security: [{ Bearer: [] }],
-    responses: {
-      200: {
-        description: 'User interactions list',
-        content: {
-          'application/json': {
-            schema: { type: 'array', items: UserInteractionSchema },
-          },
-        },
+    parameters: [
+      {
+        name: 'page',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: 1, minimum: 1 },
+        description: 'Page number (starts at 1)',
       },
+      {
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 },
+        description: 'Number of interactions per page',
+      },
+    ],
+    responses: {
+      200: PaginatedInteractionsResponseSchema,
       401: ErrorResponseSchema,
       403: ErrorResponseSchema,
       500: ErrorResponseSchema,
     },
   }),
+  zValidator('query', PaginationParams),
   async (c) => {
     try {
-      const interactions = await db.select().from(userInteractions).orderBy(desc(userInteractions.createdAt)).limit(100)
-      return c.json(interactions)
+      const { page, limit } = c.req.valid('query')
+      const offset = (page - 1) * limit
+      
+      const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(userInteractions)
+      const interactions = await db.select().from(userInteractions).orderBy(desc(userInteractions.createdAt)).limit(limit).offset(offset)
+      
+      const totalPages = Math.ceil(count / limit)
+      return c.json({ data: interactions, total: count, page, limit, totalPages }, 200)
     } catch (e) {
       serverLogger.error('Failed to fetch user interactions', { error: e })
       return c.json({ error: 'Failed to fetch user interactions' }, 500)
