@@ -8,6 +8,7 @@ import posts from './routes/posts.js'
 import account from './routes/account.js'
 import auth from './routes/auth.js'
 import users from './routes/users.js'
+import logs from './routes/logs.js'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { openAPIRouteHandler } from 'hono-openapi'
 import { Scalar } from '@scalar/hono-api-reference'
@@ -16,7 +17,7 @@ import { basicAuth } from 'hono/basic-auth'
 const app = new Hono()
 app.use('*', userInteractionLogger)
 app.use('*', cors({
-  origin: 'http://localhost:3000',
+  origin: '*', // Allow all origins
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -34,6 +35,7 @@ app.route('/api/auth', auth)
 app.route('/api/posts', posts)
 app.route('/api/roles', roles)
 app.route('/api/users', users)
+app.route('/api/logs', logs)
 
 // OpenAPI documentation endpoint
 app.get(

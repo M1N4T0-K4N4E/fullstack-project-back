@@ -511,6 +511,7 @@ postsAPI.put(
     const user = c.get('user')
 
     if (user.status == USER_STATUS.TIMEOUT) {
+      serverLogger.error('Forbidden. User is timeout.', { userId: user.id })
       return c.json({ error: 'Forbidden. You are timeout.' }, 403)
     }
 
@@ -519,9 +520,11 @@ postsAPI.put(
         where: eq(posts.id, id)
       })
       if (!post) {
+        serverLogger.error('Post not found', { postId: id })
         return c.json({ error: 'Post not found' }, 404)
       }
       if (post.userId !== user.id) {
+        serverLogger.error('Forbidden. You do not have permission to update this post.', { userId: user.id, postId: id })
         return c.json({ error: 'Forbidden. You do not have permission to update this post.' }, 403)
       }
 
@@ -544,22 +547,9 @@ postsAPI.put(
         .processSync(context)
       console.log(sanitizedContext.result)
 
-      try {
-        await db.transaction(async (tx) => {
-          await tx.update(posts)
-            .set({
-              title: title ?? post.title,
-              context: context ?? post.context,
-              updatedAt: new Date()
-            })
-            .where(eq(posts.id, id))
+       let error: GlslSyntaxError | undefined;
 
-          let error: GlslSyntaxError | undefined;
-
-          const vertexKey = `post-file:${id}:vertex`
-          const fragmentKey = `post-file:${id}:fragment`
-
-          if (vertex) {
+      if (vertex) {
             try {
               parse(vertex)
             } catch (e) {
@@ -570,17 +560,6 @@ postsAPI.put(
               serverLogger.error('Invalid GLSL syntax', { error })
               return c.json({ error: 'Invalid GLSL syntax' }, 400)
             }
-
-            const redisFile: ShaderFile = {
-              content: vertex
-            }
-
-            const oldVertex = await redis.get(vertexKey)
-            if (oldVertex) {
-              await redis.del(vertexKey)
-            }
-            await redis.set(vertexKey, JSON.stringify(redisFile))
-            uploadedRedisFiles.push(vertexKey)
           }
 
           if (fragment) {
@@ -594,19 +573,50 @@ postsAPI.put(
               serverLogger.error('Invalid GLSL syntax', { error })
               return c.json({ error: 'Invalid GLSL syntax' }, 400)
             }
+          }
 
-            const redisFile: ShaderFile = {
-              content: fragment
-            }
+      try {
+        await db.transaction(async (tx) => {
+          await tx.update(posts)
+            .set({
+              title: title ?? post.title,
+              context: context ?? post.context,
+              updatedAt: new Date()
+            })
+            .where(eq(posts.id, id))
 
-            const oldFragment = await redis.get(fragmentKey)
-            if (oldFragment) {
-              await redis.del(fragmentKey)
-            }
-          await redis.set(fragmentKey, JSON.stringify(redisFile))
+         
+
+          const vertexKey = `post-file:${id}:vertex`
+          const fragmentKey = `post-file:${id}:fragment`
+
+          
+          if (vertex) {
+            const redisFileVertex: ShaderFile = {
+            content: vertex
+          }
+
+          const oldVertex = await redis.get(vertexKey)
+          if (oldVertex) {
+            await redis.del(vertexKey)
+          }
+          await redis.set(vertexKey, JSON.stringify(redisFileVertex))
+          uploadedRedisFiles.push(vertexKey)
+        }
+
+        if (fragment) {
+          const redisFileFragment: ShaderFile = {
+            content: fragment
+          }
+
+          const oldFragment = await redis.get(fragmentKey)
+          if (oldFragment) {
+            await redis.del(fragmentKey)
+          }
+        await redis.set(fragmentKey, JSON.stringify(redisFileFragment))
           uploadedRedisFiles.push(fragmentKey)
         }
-        })
+      })
 
         serverLogger.info('Post updated successfully', { postId: id, fileCount: uploadedRedisFiles.length })
         return c.json({ message: 'Post updated successfully' }, 200)

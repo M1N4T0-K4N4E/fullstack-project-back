@@ -30,8 +30,10 @@ export const posts = pgTable('posts', {
   thumbnail: text('thumbnail'),
   like: integer('like').default(0).notNull(),
   dislike: integer('dislike').default(0).notNull(),
+  isPublic: boolean('is_public').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
+
 });
 
 export const postLikes = pgTable('post_likes', {
