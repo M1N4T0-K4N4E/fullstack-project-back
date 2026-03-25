@@ -1,0 +1,14 @@
+meta {
+  name: Shaderd API Collection
+  type: collection
+}
+
+vars {
+  baseUrl: https://labs.boon4681.com/
+  timestamp: {{$timestamp}}
+}
+
+script:pre-request {
+  // Set timestamp variable for unique test data
+  bru.setVar("timestamp", Math.floor(Date.now() / 1000));
+}

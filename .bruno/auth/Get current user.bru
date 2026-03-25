@@ -1,0 +1,41 @@
+meta {
+  name: Get current user
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/auth/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response has id", function() {
+    expect(res.getBody()).to.have.property('id');
+  });
+
+  test("Response has email", function() {
+    expect(res.getBody()).to.have.property('email');
+  });
+
+  test("Response has name", function() {
+    expect(res.getBody()).to.have.property('name');
+  });
+
+  test("Response has role", function() {
+    expect(res.getBody()).to.have.property('role');
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+}

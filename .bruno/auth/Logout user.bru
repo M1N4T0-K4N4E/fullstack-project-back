@@ -1,0 +1,35 @@
+meta {
+  name: Logout user
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/auth/logout
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "refreshToken": "{{refreshToken}}"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+}

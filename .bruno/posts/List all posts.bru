@@ -1,0 +1,29 @@
+meta {
+  name: List all posts
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/posts
+  body: none
+  auth: none
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response is an array", function() {
+    expect(res.getBody()).to.be.an('array');
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+
+  test("Response time is less than 2 seconds", function() {
+    expect(res.getResponseTime()).to.be.lessThan(2000);
+  });
+}

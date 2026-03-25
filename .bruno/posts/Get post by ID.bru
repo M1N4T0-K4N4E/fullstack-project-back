@@ -1,0 +1,42 @@
+meta {
+  name: Get post by ID
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/posts/:id
+  body: none
+  auth: none
+}
+
+params:path {
+  id: {{createdPostId}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+
+  test("Response has post object", function() {
+    expect(res.getBody()).to.have.property('post');
+    expect(res.getBody().post).to.be.an('object');
+  });
+
+  test("Post has id", function() {
+    expect(res.getBody().post).to.have.property('id');
+  });
+
+  test("Post has title", function() {
+    expect(res.getBody().post).to.have.property('title');
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+}

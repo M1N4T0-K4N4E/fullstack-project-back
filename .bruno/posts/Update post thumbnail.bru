@@ -1,0 +1,43 @@
+meta {
+  name: Update post thumbnail
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{baseUrl}}/api/posts/:id/thumbnail
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+params:path {
+  id: {{createdPostId}}
+}
+
+tests {
+  test("Status code is 200 or 400 (no file provided)", function() {
+    const status = res.getStatus();
+    expect(status).to.be.oneOf([200, 400]);
+  });
+
+  test("If 200, response has message and postId", function() {
+    if (res.getStatus() === 200) {
+      expect(res.getBody()).to.have.property('message');
+      expect(res.getBody()).to.have.property('postId');
+    }
+  });
+
+  test("If 400, response has error", function() {
+    if (res.getStatus() === 400) {
+      expect(res.getBody()).to.have.property('error');
+    }
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+}

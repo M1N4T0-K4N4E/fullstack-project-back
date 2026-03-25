@@ -1,0 +1,30 @@
+meta {
+  name: Google OAuth callback
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/auth/google/callback
+  body: none
+  auth: none
+}
+
+params:query {
+  code:
+  state:
+}
+
+tests {
+  test("Status code is 302 (redirect to frontend) or 400 (invalid state)", function() {
+    const status = res.getStatus();
+    expect(status).to.be.oneOf([302, 400]);
+  });
+
+  test("If 302, redirects to frontend with tokens", function() {
+    if (res.getStatus() === 302) {
+      const location = res.getHeader('location');
+      expect(location).to.contain(process.env.FRONTEND_URL || 'http://localhost:3000');
+    }
+  });
+}

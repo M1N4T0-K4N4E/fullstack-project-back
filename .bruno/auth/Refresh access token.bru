@@ -1,0 +1,43 @@
+meta {
+  name: Refresh access token
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/auth/refresh
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refreshToken": "{{refreshToken}}"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+
+  test("Response has new token", function() {
+    expect(res.getBody()).to.have.property('token');
+  });
+
+  test("Token is a non-empty string", function() {
+    expect(res.getBody().token).to.be.a('string');
+    expect(res.getBody().token.length).to.be.greaterThan(0);
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+
+  // Save new token
+  bru.setVar("authToken", res.getBody().token);
+}

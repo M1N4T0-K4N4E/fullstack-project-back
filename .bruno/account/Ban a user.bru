@@ -1,0 +1,36 @@
+meta {
+  name: Ban a user
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/account/ban
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "userId": "{{targetUserId}}"
+  }
+}
+
+tests {
+  test("Status code is 200, 403, or 404", function() {
+    const status = res.getStatus();
+    expect(status).to.be.oneOf([200, 403, 404]);
+  });
+
+  test("Response has message or error", function() {
+    expect(res.getBody()).to.have.property('message') || expect(res.getBody()).to.have.property('error');
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+}

@@ -1,0 +1,44 @@
+meta {
+  name: List all roles
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/roles
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+
+  test("Response has roles object", function() {
+    expect(res.getBody()).to.have.property('roles');
+    expect(res.getBody().roles).to.be.an('object');
+  });
+
+  test("Roles object has expected role keys", function() {
+    expect(res.getBody().roles).to.have.property('ADMIN');
+    expect(res.getBody().roles).to.have.property('USER');
+    expect(res.getBody().roles).to.have.property('MODERATOR');
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+
+  test("Response time is less than 1 second", function() {
+    expect(res.getResponseTime()).to.be.lessThan(1000);
+  });
+}

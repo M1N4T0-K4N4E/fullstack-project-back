@@ -1,0 +1,48 @@
+meta {
+  name: Update account info
+  type: http
+  seq: 2
+}
+
+put {
+  url: {{baseUrl}}/api/account
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "name": "Updated Name {{timestamp}}",
+    "avatarUrl": "https://example.com/avatar.png"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+
+  test("Response has new token", function() {
+    expect(res.getBody()).to.have.property('token');
+  });
+
+  test("Token is a non-empty string", function() {
+    expect(res.getBody().token).to.be.a('string');
+    expect(res.getBody().token.length).to.be.greaterThan(0);
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+
+  // Update auth token with new one
+  bru.setVar("authToken", res.getBody().token);
+}

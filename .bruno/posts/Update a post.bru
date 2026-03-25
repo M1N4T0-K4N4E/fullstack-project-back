@@ -1,0 +1,42 @@
+meta {
+  name: Update a post
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/posts/:id
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+params:path {
+  id: {{createdPostId}}
+}
+
+body:json {
+  {
+    "title": "Updated Test Post {{timestamp}}",
+    "context": "This is updated context",
+    "vertex": "void main() {}",
+    "fragment": "void main() { gl_FragColor = vec4(1.0); }"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+}

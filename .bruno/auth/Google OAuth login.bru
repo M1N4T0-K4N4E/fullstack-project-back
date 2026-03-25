@@ -1,0 +1,22 @@
+meta {
+  name: Google OAuth login
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/auth/google
+  body: none
+  auth: none
+}
+
+tests {
+  test("Status code is 302 (redirect)", function() {
+    expect(res.getStatus()).to.equal(302);
+  });
+
+  test("Response has location header (Google OAuth URL)", function() {
+    const location = res.getHeader('location');
+    expect(location).to.contain('accounts.google.com');
+  });
+}

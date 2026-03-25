@@ -1,0 +1,47 @@
+meta {
+  name: Create a new post
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/posts
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "title": "Test Post {{timestamp}}"
+  }
+}
+
+tests {
+  test("Status code is 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+
+  test("Response has postId", function() {
+    expect(res.getBody()).to.have.property('postId');
+  });
+
+  test("PostId is a non-empty string", function() {
+    expect(res.getBody().postId).to.be.a('string');
+    expect(res.getBody().postId.length).to.be.greaterThan(0);
+  });
+
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+
+  // Save postId for later use
+  bru.setVar("createdPostId", res.getBody().postId);
+}

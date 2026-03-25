@@ -1,0 +1,53 @@
+meta {
+  name: List all users
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/users
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+  
+  test("Response has users array", function() {
+    expect(res.getBody()).to.have.property('users');
+    expect(res.getBody().users).to.be.an('array');
+  });
+  
+  test("Users have required fields", function() {
+    if (res.getBody().users.length > 0) {
+      const user = res.getBody().users[0];
+      expect(user).to.have.property('id');
+      expect(user).to.have.property('email');
+      expect(user).to.have.property('name');
+      expect(user).to.have.property('role');
+    }
+  });
+  
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+  
+  test("Response time is less than 2 seconds", function() {
+    expect(res.getResponseTime()).to.be.lessThan(2000);
+  });
+  
+  // Save first user id for other tests
+  if (res.getBody().users && res.getBody().users.length > 0) {
+    bru.setVar("targetUserId", res.getBody().users[0].id);
+  }
+}

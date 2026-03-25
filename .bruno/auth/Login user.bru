@@ -1,0 +1,50 @@
+meta {
+  name: Login user
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "testuser2@test.com",
+    "password": "password123"
+  }
+}
+
+script:post-response {
+  bru.setVar("authToken", res.body.token);
+  bru.setVar("refreshToken", res.body.refreshToken);
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has message", function() {
+    expect(res.getBody()).to.have.property('message');
+  });
+  
+  test("Response has token", function() {
+    expect(res.getBody()).to.have.property('token');
+  });
+  
+  test("Response has refreshToken", function() {
+    expect(res.getBody()).to.have.property('refreshToken');
+  });
+  
+  test("Token is a non-empty string", function() {
+    expect(res.getBody().token).to.be.a('string');
+    expect(res.getBody().token.length).to.be.greaterThan(0);
+  });
+  
+  test("Content-Type is application/json", function() {
+    expect(res.getHeader('content-type')).to.contain('application/json');
+  });
+}
