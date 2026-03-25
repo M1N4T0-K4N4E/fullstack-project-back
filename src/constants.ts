@@ -4,9 +4,10 @@ export const USER_ROLES = {
   USER: 'user',
 } as const;
 
-export const FILE_UPLOAD_TYPE = {
-  VERTEX: 'vertex',
-  FRAGMENT: 'fragment',
+export const USER_STATUS = {
+  ACTIVE: 'active',
+  TIMEOUT: 'timeout',
+  BANNED: 'banned',
 } as const;
 
 export const ARGON2_OPTIONS = {
@@ -15,13 +16,17 @@ export const ARGON2_OPTIONS = {
   timeCost: 3,
 } as const;
 
-export const PASSWORD_MIN_LENGTH = 15;
-
-export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
-export type FileUploadType = typeof FILE_UPLOAD_TYPE[keyof typeof FILE_UPLOAD_TYPE];
-
 export const JWT_EXPIRATION = {
   ACCESS_TOKEN: '15m',
   REFRESH_TOKEN: '7d',
   REFRESH_TOKEN_REDIS: 7 * 24 * 60 * 60, // 7 days in seconds
 } as const;
+
+export interface ShaderFile {
+  content: string;
+}
+
+export const PASSWORD_MIN_LENGTH = 15;
+
+export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
+export type UserStatus = typeof USER_STATUS[keyof typeof USER_STATUS];
