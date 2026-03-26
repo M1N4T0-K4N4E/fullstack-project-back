@@ -496,7 +496,8 @@ authAPI.post(
     const refreshToken = body.refreshToken;
 
     try {
-      await redis.set(token, 'true', 'EX', 12 * 60 * 60);
+      await redis.set(token, 'true', 'EX', 15 * 60); // Blacklist jwt token for 15 minutes
+      
 
       if (refreshToken) {
         try {
