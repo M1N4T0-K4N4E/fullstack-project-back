@@ -27,7 +27,11 @@ lerna-debug.log*
 # misc
 .DS_Store
 .scannerwork/
+sonar-project.properties
 
 # file
 newt.exe
 /.c*
+
+# test
+/coverage
