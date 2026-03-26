@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { authAdminMiddleware, type Variables } from '../middleware/auth.js'
-import { PAGINATION, USER_ROLES } from '../constants.js'
+import { PAGINATION } from '../constants.js'
 import { db } from '../db/index.js'
 import { serverLogs, userInteractions } from '../db/schema.js'
 import { desc, sql } from 'drizzle-orm'
