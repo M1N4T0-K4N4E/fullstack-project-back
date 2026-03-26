@@ -67,6 +67,7 @@ const PostSchema: OpenAPIV3_1.SchemaObject = {
     thumbnail: { type: ['string', 'null'] },
     like: { type: 'integer' },
     dislike: { type: 'integer' },
+    isDeleted: { type: 'boolean' },
     createdAt: { type: 'string' },
     user: {
       type: 'object',
@@ -115,6 +116,7 @@ const PostDetailResponseSchema: OpenAPIV3_1.ResponseObject = {
               thumbnail: { type: ['string', 'null'] },
               like: { type: 'integer' },
               dislike: { type: 'integer' },
+              isUserLiked: { type: 'boolean' },
               vertex: { type: ['string', 'null'] },
               fragment: { type: ['string', 'null'] },
               createdAt: { type: 'string' },
@@ -226,15 +228,14 @@ postsAPI.get(
     const { page, limit } = c.req.valid('query')
     const offset = (page - 1) * limit
     try {
-      const whereClause = user.role === USER_ROLES.ADMIN
-        ? eq(posts.isDeleted, false)
-        : and(eq(posts.isPublic, true), eq(posts.isDeleted, false))
+      const whereClause = user.role !== USER_ROLES.ADMIN && user.role !== USER_ROLES.MODERATOR
+      ? and(eq(posts.isPublic, true), eq(posts.isDeleted, false))
+      : eq(posts.isDeleted, false)
 
       const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(posts).where(whereClause)
 
-      if (user.role === USER_ROLES.ADMIN) {
+      if (user.role === USER_ROLES.ADMIN || user.role === USER_ROLES.MODERATOR) {
         allPosts = await db.query.posts.findMany({
-          where: eq(posts.isDeleted, false),
           orderBy: desc(posts.createdAt),
           limit,
           offset,
@@ -367,6 +368,7 @@ postsAPI.get(
   authGuestMiddleware,
   async (c) => {
     const user = c.get('user') ?? { id: 'guest', email: 'guest' }
+    console.log('Fetching post detail', { postId: c.req.param('id'), userId: user.id })
     const id = c.req.param('id')
     try {
       const post = await db.query.posts.findFirst({
@@ -1053,9 +1055,9 @@ postsAPI.delete(
   }
 )
 
-// PATCH /api/posts/:id - Restore a post
+// PATCH /api/posts/:id/restore - Restore a post
 postsAPI.patch(
-  '/:id',
+  '/:id/restore',
   describeRoute({
     operationId: 'restorePost',
     tags: ['posts'],
