@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { authMiddleware, type Variables } from '../middleware/auth.js'
+import { authAdminMiddleware, type Variables } from '../middleware/auth.js'
 import { PAGINATION, USER_ROLES } from '../constants.js'
 import { db } from '../db/index.js'
 import { serverLogs, userInteractions } from '../db/schema.js'
@@ -15,13 +15,7 @@ import { zValidator } from '@hono/zod-validator'
 const logsAPI = new Hono<{ Variables: Variables }>()
 
 // Middleware to ensure only admins can access logs
-logsAPI.use(authMiddleware, async (c, next) => {
-  const user = c.get('user')
-  if (user.role !== USER_ROLES.ADMIN) {
-    return c.json({ error: 'Forbidden' }, 403)
-  }
-  await next()
-})
+logsAPI.use(authAdminMiddleware)
 
 
 
