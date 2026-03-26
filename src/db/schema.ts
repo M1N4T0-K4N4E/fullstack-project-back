@@ -1,5 +1,5 @@
 import { pgTable, text, integer, timestamp, uuid, jsonb, boolean } from 'drizzle-orm/pg-core';
-import { is, relations, } from 'drizzle-orm';
+import { relations, } from 'drizzle-orm';
 import { init } from '@paralleldrive/cuid2';
 import { USER_ROLES, USER_STATUS } from '../constants.js';
 
