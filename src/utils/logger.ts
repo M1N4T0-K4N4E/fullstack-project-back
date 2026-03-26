@@ -102,30 +102,48 @@ export const userLogger = winston.createLogger({
   ],
 });
 
+type ActionRule = {
+  methods: string[];
+  action: string;
+  match: (path: string) => boolean;
+};
+
+const ACTION_RULES: ActionRule[] = [
+  { methods: ['POST'], action: 'create_post', match: (path) => path === '/api/posts' },
+  { methods: ['PUT'], action: 'like_post', match: (path) => /^\/api\/posts\/like\/.+/.test(path) },
+  { methods: ['PUT'], action: 'dislike_post', match: (path) => /^\/api\/posts\/dislike\/.+/.test(path) },
+  { methods: ['PUT'], action: 'update_account', match: (path) => path === '/api/account' },
+  { methods: ['PUT'], action: 'change_password', match: (path) => path === '/api/account/password' },
+  { methods: ['POST'], action: 'register', match: (path) => path === '/api/auth/register' },
+  { methods: ['POST', 'GET'], action: 'login', match: (path) => /^\/api\/auth\/(login|google)$/.test(path) },
+  { methods: ['POST'], action: 'logout', match: (path) => path === '/api/auth/logout' },
+  { methods: ['POST'], action: 'refresh_token', match: (path) => path === '/api/auth/refresh' },
+  { methods: ['PUT'], action: 'update_post_thumbnail', match: (path) => /^\/api\/posts\/.+\/thumbnail$/.test(path) },
+  { methods: ['PUT'], action: 'publish_post', match: (path) => /^\/api\/posts\/.+\/publish$/.test(path) },
+  { methods: ['PUT'], action: 'update_post', match: (path) => /^\/api\/posts\/.+/.test(path) },
+  { methods: ['DELETE'], action: 'delete_post', match: (path) => /^\/api\/posts\/.+/.test(path) },
+  { methods: ['PATCH'], action: 'restore_post', match: (path) => /^\/api\/posts\/.+/.test(path) },
+  { methods: ['GET'], action: 'view_posts', match: (path) => path.startsWith('/api/posts') },
+  { methods: ['GET'], action: 'view_account', match: (path) => path.startsWith('/api/account') },
+  { methods: ['GET'], action: 'view_users', match: (path) => path.startsWith('/api/users') },
+  { methods: ['GET'], action: 'view_user_logs', match: (path) => path === '/api/logs/user' },
+  { methods: ['GET'], action: 'view_server_logs', match: (path) => path === '/api/logs/server' },
+  { methods: ['GET'], action: 'view_log_files', match: (path) => path === '/api/logs/files' },
+  { methods: ['GET'], action: 'view_log_file_content', match: (path) => /^\/api\/logs\/files\/.+/.test(path) },
+  { methods: ['POST'], action: 'ban_user', match: (path) => path === '/api/account/ban' },
+  { methods: ['GET'], action: 'view_api_doc', match: (path) => path === '/scalar' || path === '/doc' },
+];
+
 const inferUserAction = (method: string, path: string): string => {
-  if (method === 'POST' && path === '/api/posts') return 'create_post';
-  if (method === 'PUT' && /^\/api\/posts\/like\/.+/.test(path)) return 'like_post';
-  if (method === 'PUT' && /^\/api\/posts\/dislike\/.+/.test(path)) return 'dislike_post';
-  if (method === 'PUT' && path === '/api/account') return 'update_account';
-  if (method === 'PUT' && path === '/api/account/password') return 'change_password';
-  if (method === 'POST' && /^\/api\/auth\/register$/.test(path)) return 'register';
-  if ((method === 'POST' || method === 'GET') && /^\/api\/auth\/(login|google)$/.test(path)) return 'login';
-  if (method === 'POST' && path === '/api/auth/logout') return 'logout';
-  if (method === 'POST' && path === '/api/auth/refresh') return 'refresh_token';
-  if (method === 'PUT' && /^\/api\/posts\/.+\/thumbnail$/.test(path)) return 'update_post_thumbnail';
-  if (method === 'PUT' && /^\/api\/posts\/.+/.test(path)) return 'update_post';
-  if (method === 'DELETE' && /^\/api\/posts\/.+/.test(path)) return 'delete_post';
-  if (method === 'PATCH' && /^\/api\/posts\/.+/.test(path)) return 'restore_post';
-  if (method === 'GET' && path.startsWith('/api/posts')) return 'view_posts';
-  if (method === 'GET' && path.startsWith('/api/account')) return 'view_account';
-  if (method === 'GET' && path.startsWith('/api/users')) return 'view_users';
-  if (method === 'GET' && path === '/api/logs/user') return 'view_user_logs';
-  if (method === 'GET' && path === '/api/logs/server') return 'view_server_logs';
-  if (method === 'GET' && path === '/api/logs/files') return 'view_log_files';
-  if (method === 'GET' && /^\/api\/logs\/files\/.+/.test(path)) return 'view_log_file_content';
-  if (method === 'POST' && path === '/api/account/ban') return 'ban_user';
-  if (method === 'GET' && path === '/scalar') return 'view_api_doc';
-  if (method === 'GET' && path === '/doc') return 'view_api_doc';
+  const normalizedMethod = method.toUpperCase();
+  const normalizedPath = path.length > 1 ? path.replace(/\/+$/, '') : path;
+
+  for (const rule of ACTION_RULES) {
+    if (rule.methods.includes(normalizedMethod) && rule.match(normalizedPath)) {
+      return rule.action;
+    }
+  }
+
   return 'unknown';
 };
 
