@@ -19,7 +19,7 @@ const consoleFormat = printf(({ level, message, timestamp, ...metadata }) => {
   let msg = `[${timestamp}] ${level}: ${message}`;
   if (Object.keys(metadata).length > 0 && metadata.message !== message) {
     // avoid duplicating message if it's both a property and log text
-    const metaStr = Object.assign({}, metadata);
+    const metaStr = { ...metadata };
     delete metaStr.splat;
     if (Object.keys(metaStr).length > 0) {
       msg += ` ${JSON.stringify(metaStr)}`;
