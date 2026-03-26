@@ -11,7 +11,7 @@ import { PAGINATION, USER_ROLES, USER_STATUS } from '../constants.js'
 import redis from '../utils/redis.js'
 import { parse, GlslSyntaxError } from '@shaderfrog/glsl-parser'
 import path from 'node:path'
-import * as fs from 'node:fs'
+import fs from 'node:fs'
 import { unified } from 'unified'
 import rehypeParse from 'rehype-parse'
 import rehypeSanitize from 'rehype-sanitize'
@@ -286,9 +286,9 @@ postsAPI.get(
 postsAPI.get(
   '/@me',
   describeRoute({
-    operationId: 'listPosts',
+    operationId: 'listSelfPosts',
     tags: ['posts'],
-    summary: 'List all posts',
+    summary: 'List all posts of the authenticated user',
     description: 'Get a paginated list of own posts with user info',
     parameters: [
       {
