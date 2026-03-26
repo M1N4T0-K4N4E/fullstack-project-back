@@ -140,7 +140,7 @@ const normalizePath = (requestPath: string): string => {
   }
 
   let end = requestPath.length;
-  while (end > 1 && requestPath.charCodeAt(end - 1) === 47) {
+  while (end > 1 && requestPath.codePointAt(end - 1) === 47) {
     end -= 1;
   }
 
