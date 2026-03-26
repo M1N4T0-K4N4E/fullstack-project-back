@@ -28,13 +28,13 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
 // Zod Schemas for validation
 const registerSchema = z.object({
-  email: z.string().email('Invalid email format'),
+  email: z.email('Invalid email format'),
   password: z.string().min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters long`),
   name: z.string().min(1, 'Name is required'),
 });
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email format'),
+  email: z.email('Invalid email format'),
   password: z.string().min(8, 'Password must be at least 8 characters long'),
 });
 
@@ -435,7 +435,9 @@ authAPI.get(
 
       const user: string[] = [];
 
-      if (!existingUser) {
+      if (existingUser) {
+        user.push(existingUser.id, existingUser.email, existingUser.name, existingUser.role);
+      } else {
         const [newUser] = await db.insert(users).values({
           googleId: googleUser.sub,
           email: googleUser.email,
@@ -443,8 +445,6 @@ authAPI.get(
           avatarUrl: googleUser.picture
         }).returning();
         user.push(newUser.id, newUser.email, newUser.name, newUser.role);
-      } else {
-        user.push(existingUser.id, existingUser.email, existingUser.name, existingUser.role);
       }
 
       const { accessToken, refreshToken } = await generateTokens({
@@ -515,6 +515,8 @@ authAPI.post(
           }
         } catch (e) {
           // Refresh token might be expired or invalid, just ignore
+          serverLogger.info('Invalid refresh token', { error: e });
+          return c.json({ message: 'Logged out successfully' }, 200);
         }
       }
 
