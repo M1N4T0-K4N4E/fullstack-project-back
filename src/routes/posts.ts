@@ -1053,4 +1053,65 @@ postsAPI.delete(
   }
 )
 
+// PATCH /api/posts/:id - Restore a post
+postsAPI.patch(
+  '/:id',
+  describeRoute({
+    operationId: 'restorePost',
+    tags: ['posts'],
+    summary: 'Restore a post',
+    description: 'Restore a deleted post by ID',
+    security: [{ Bearer: [] }],
+    parameters: [
+      {
+        name: 'id',
+        in: 'path',
+        required: true,
+        schema: { type: 'string' },
+      },
+    ],
+    responses: {
+      200: MessageResponseSchema,
+      401: ErrorResponseSchema,
+      403: ErrorResponseSchema,
+      404: ErrorResponseSchema,
+      500: ErrorResponseSchema,
+    },
+  }),
+  authMiddleware,
+  async (c) => {
+    const id = c.req.param('id')
+    const user = c.get('user')
+
+    const post = await db.query.posts.findFirst({
+      where: eq(posts.id, id)
+    })
+    if (!post) return c.json({ error: 'Post not found' }, 404)
+
+    if (user.role !== USER_ROLES.ADMIN && user.role !== USER_ROLES.MODERATOR && post.userId !== user.id) {
+      return c.json({ error: 'Forbidden. You do not have permission to restore this post.' }, 403)
+    }
+
+    try {
+      const fileKeys = await redis.keys(`post-file:${id}:*`)
+      if (fileKeys.length > 0) {
+        await redis.del(...fileKeys)
+      }
+
+      // await db.delete(posts).where(eq(posts.id, id))
+      await db.update(posts)
+        .set({
+          isDeleted: false,
+          updatedAt: new Date()
+        })
+        .where(eq(posts.id, id))
+      serverLogger.info('Post restored successfully', { postId: id })
+      return c.json({ message: 'Post restored' }, 200)
+    } catch (e) {
+      serverLogger.error('Failed to restore post', { error: e })
+      return c.json({ error: 'Failed to restore post' }, 500)
+    }
+  }
+)
+
 export default postsAPI
