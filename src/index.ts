@@ -58,15 +58,22 @@ app.get(
   })
 )
 
-app.get('/scalar', Scalar({ url: '/doc' }))
+const scalarUsername = process.env.SCALAR_USERNAME!;
+const scalarPassword = process.env.SCALAR_PASSWORD!;
+
+if (!scalarUsername || !scalarPassword) {
+  serverLogger.warn('Scalar API credentials are not set. Scalar documentation will be protected by basic auth with default credentials.');
+}
 
 app.use(
   '/scalar/*',
   basicAuth({
-    username: 'shaderd',
-    password: 'password',
+    username: scalarUsername,
+    password: scalarPassword,
   })
 )
+
+app.get('/scalar', Scalar({ url: '/doc' }))
 
 serve({
   fetch: app.fetch,
