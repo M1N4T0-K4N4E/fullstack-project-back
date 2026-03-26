@@ -68,6 +68,7 @@ const PostSchema: OpenAPIV3_1.SchemaObject = {
     like: { type: 'integer' },
     dislike: { type: 'integer' },
     isDeleted: { type: 'boolean' },
+    isPublic: { type: 'boolean' },
     createdAt: { type: 'string' },
     user: {
       type: 'object',
@@ -119,6 +120,7 @@ const PostDetailResponseSchema: OpenAPIV3_1.ResponseObject = {
               isUserLiked: { type: 'boolean' },
               vertex: { type: ['string', 'null'] },
               fragment: { type: ['string', 'null'] },
+              isPublic: { type: 'boolean' },
               createdAt: { type: 'string' },
               user: {
                 type: 'object',
