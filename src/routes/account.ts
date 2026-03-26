@@ -186,8 +186,8 @@ accountAPI.put(
     try {
       const [updatedUser] = await db.update(users)
         .set({
-          name: name !== undefined ? name : user.name,
-          avatarUrl: avatarUrl !== undefined ? avatarUrl : user.avatarUrl,
+          name: name ?? user.name,
+          avatarUrl: avatarUrl ?? user.avatarUrl,
         })
         .where(eq(users.id, user.id))
         .returning();

@@ -307,12 +307,19 @@ authAPI.post(
         where: eq(users.email, email)
       });
 
-      if (!user || !user.password) {
+      if (!user) {
+        serverLogger.warn('Login attempt with unknown user', { userEmail: email });
         return c.json({ error: 'Invalid credentials' }, 401);
+      }
+
+      if (!user.password) {
+        serverLogger.warn('Login attempt with OAuth user', { userEmail: email });
+        return c.json({ error: 'User registered with OAuth. Please login with Google.' }, 401);
       }
 
       const isValid = await argon2.verify(user.password, password);
       if (!isValid) {
+        serverLogger.warn('Login attempt with invalid password', { userEmail: email });
         return c.json({ error: 'Invalid credentials' }, 401);
       }
 
