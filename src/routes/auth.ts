@@ -352,7 +352,7 @@ authAPI.get(
   async (c) => {
     const state = generateState();
     const codeVerifier = generateCodeVerifier();
-    const url = await google.createAuthorizationURL(state, codeVerifier, ['profile', 'email']);
+    const url = google.createAuthorizationURL(state, codeVerifier, ['profile', 'email']);
 
     setCookie(c, 'google_oauth_state', state, {
       path: '/',
