@@ -179,6 +179,7 @@ export const authAdminMiddleware = createMiddleware<{ Variables: Variables }>(as
     c.set('payload', payload);
     await next();
   } catch (e) {
+    serverLogger.error('Error occurred while verifying token', { error: e });
     return c.json({ error: 'Invalid token' }, 401);
   }
 });
