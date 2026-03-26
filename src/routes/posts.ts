@@ -196,6 +196,34 @@ const MessageResponseSchema: OpenAPIV3_1.ResponseObject = {
   },
 };
 
+// Helper function to fetch paginated posts
+const fetchPaginatedPosts = async (whereClause: any, page: number, limit: number) => {
+  const offset = (page - 1) * limit;
+  
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(posts).where(whereClause);
+  
+  const allPosts = await db.query.posts.findMany({
+    where: whereClause,
+    orderBy: desc(posts.createdAt),
+    limit,
+    offset,
+    with: {
+      user: {
+        columns: {
+          name: true,
+        }
+      }
+    },
+    columns: {
+      userId: false,
+      updatedAt: false,
+    }
+  });
+  
+  const totalPages = Math.ceil(count / limit);
+  return { data: allPosts, total: count, page, limit, totalPages };
+};
+
 // GET /api/posts - List all current posts
 postsAPI.get(
   '/',
@@ -226,55 +254,15 @@ postsAPI.get(
   authGuestMiddleware,
   zValidator('query', PaginationParams),
   async (c) => {
-    let allPosts;
     const user = c.get('user') ?? { id: 'guest', email: 'guest', role: USER_ROLES.USER  }
     const { page, limit } = c.req.valid('query')
-    const offset = (page - 1) * limit
     try {
       const whereClause = user.role !== USER_ROLES.ADMIN && user.role !== USER_ROLES.MODERATOR
-      ? and(eq(posts.isPublic, true), eq(posts.isDeleted, false))
-      : eq(posts.isDeleted, false)
+        ? and(eq(posts.isPublic, true), eq(posts.isDeleted, false))
+        : eq(posts.isDeleted, false)
 
-      const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(posts).where(whereClause)
-
-      if (user.role === USER_ROLES.ADMIN || user.role === USER_ROLES.MODERATOR) {
-        allPosts = await db.query.posts.findMany({
-          orderBy: desc(posts.createdAt),
-          limit,
-          offset,
-          with: {
-            user: {
-              columns: {
-                name: true,
-              }
-            }
-          },
-          columns: {
-            userId: false,
-            updatedAt: false,
-          }
-        })
-      } else {
-        allPosts = await db.query.posts.findMany({
-          where: and(eq(posts.isPublic, true), eq(posts.isDeleted, false)),
-          orderBy: desc(posts.createdAt),
-          limit,
-          offset,
-          with: {
-            user: {
-              columns: {
-                name: true,
-              }
-            }
-          },
-          columns: {
-            userId: false,
-            updatedAt: false,
-          }
-        })
-      }
-      const totalPages = Math.ceil(count / limit)
-      return c.json({ data: allPosts, total: count, page, limit, totalPages })
+      const result = await fetchPaginatedPosts(whereClause, page, limit)
+      return c.json(result)
     } catch (e) {
       serverLogger.error('Failed to fetch posts', { error: e })
       return c.json({ error: 'Failed to fetch posts' }, 500)
@@ -314,31 +302,10 @@ postsAPI.get(
   async (c) => {
     const user = c.get('user')
     const { page, limit } = c.req.valid('query')
-    const offset = (page - 1) * limit
     try {
-      const [{ count }] = await db.select({ count: sql<number>`count(*)` })
-        .from(posts)
-        .where(and(eq(posts.userId, user.id), eq(posts.isDeleted, false)))
-
-      const allPosts = await db.query.posts.findMany({
-        where: and(eq(posts.userId, user.id), eq(posts.isDeleted, false)),
-        orderBy: desc(posts.createdAt),
-        limit,
-        offset,
-        with: {
-          user: {
-            columns: {
-              name: true,
-            }
-          }
-        },
-        columns: {
-          userId: false,
-          updatedAt: false,
-        }
-      })
-      const totalPages = Math.ceil(count / limit)
-      return c.json({ data: allPosts, total: count, page, limit, totalPages })
+      const whereClause = and(eq(posts.userId, user.id), eq(posts.isDeleted, false))
+      const result = await fetchPaginatedPosts(whereClause, page, limit)
+      return c.json(result)
     } catch (e) {
       serverLogger.error('Failed to fetch posts', { error: e })
       return c.json({ error: 'Failed to fetch posts' }, 500)
