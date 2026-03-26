@@ -29,13 +29,14 @@ const userSelect = {
   name: users.name,
   role: users.role,
   status: users.status,
+  timeoutEnd: users.timeoutEnd,
   avatarUrl: users.avatarUrl,
   createdAt: users.createdAt,
   updatedAt: users.updatedAt,
 }
 
 const timeoutSchema = z.object({
-  duration: z.number().int().positive(),
+  duration: z.number().positive(),
 });
 
 const PaginationParams = z.object({
@@ -67,6 +68,7 @@ const UserSchema: OpenAPIV3_1.SchemaObject = {
     role: { type: ['string', 'null'] },
     status: { type: ['string', 'null'] },
     avatarUrl: { type: ['string', 'null'] },
+    timeoutEnd: { type: ['string', 'null'] },
     createdAt: { type: 'string' },
     updatedAt: { type: 'string' },
   },
@@ -305,22 +307,23 @@ usersAPI.post(
   }),
   zValidator('json', timeoutSchema),
   async (c) => {
+    const user = c.get('user')
     const id = c.req.param('id')
     const { duration } = c.req.valid('json')
     try {
-      const [user] = await db.select(userSelect)
+      const [userTarget] = await db.select(userSelect)
         .from(users)
         .where(eq(users.id, id))
 
-      if (!user) {
+      if (!userTarget) {
         return c.json({ error: 'User not found' }, 404)
       }
 
-      if (user.role === USER_ROLES.ADMIN || user.role === USER_ROLES.MODERATOR) {
+      if (userTarget.role === USER_ROLES.ADMIN || userTarget.role === USER_ROLES.MODERATOR) {
         return c.json({ error: 'Forbidden. You cannot timeout admin or moderator' }, 403)
       }
 
-      if (user.id === id) {
+      if (user.id === userTarget.id) {
         return c.json({ error: 'Forbidden. You cannot timeout yourself' }, 403)
       }
 
