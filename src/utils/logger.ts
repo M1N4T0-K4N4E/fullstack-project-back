@@ -134,9 +134,22 @@ const ACTION_RULES: ActionRule[] = [
   { methods: ['GET'], action: 'view_api_doc', match: (path) => path === '/scalar' || path === '/doc' },
 ];
 
+const normalizePath = (requestPath: string): string => {
+  if (requestPath.length <= 1) {
+    return requestPath;
+  }
+
+  let end = requestPath.length;
+  while (end > 1 && requestPath.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+
+  return end === requestPath.length ? requestPath : requestPath.slice(0, end);
+};
+
 const inferUserAction = (method: string, path: string): string => {
   const normalizedMethod = method.toUpperCase();
-  const normalizedPath = path.length > 1 ? path.replace(/\/+$/, '') : path;
+  const normalizedPath = normalizePath(path);
 
   for (const rule of ACTION_RULES) {
     if (rule.methods.includes(normalizedMethod) && rule.match(normalizedPath)) {
