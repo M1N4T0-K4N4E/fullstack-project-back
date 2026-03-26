@@ -19,6 +19,7 @@ import rehypeRemark from 'rehype-remark'
 import remarkStringify from 'remark-stringify'
 import { describeRoute } from 'hono-openapi'
 import type { OpenAPIV3_1 } from 'openapi-types'
+import { getImageExtension, validateImageFile, validateImageMagicNumber } from '../utils/image.js'
 
 
 const postsAPI = new Hono<{ Variables: Variables }>()
@@ -550,22 +551,16 @@ postsAPI.put(
         return c.json({ error: 'Forbidden. You do not have permission to update this post.' }, 403)
       }
 
-      const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB limit
-      const MIME_MAP: Record<string, string> = {
-        'image/jpeg': '.jpg',
-        'image/png': '.png',
-        'image/webp': '.webp',
-      };
+      const validationResult = validateImageFile(file)
+      if (!validationResult.valid) {
+        serverLogger.error(validationResult.error ?? 'Invalid image file', { fileType: file.type, fileSize: file.size })
+        return c.json({ error: validationResult.error ?? 'Invalid image file.' }, 400)
+      }
 
-      const fileExt = MIME_MAP[file.type]
+      const fileExt = getImageExtension(file.type)
       if (!fileExt) {
         serverLogger.error('Invalid file type', { fileType: file.type })
         return c.json({ error: 'Invalid file type. Only JPEG, PNG, and WEBP are allowed.' }, 400)
-      }
-
-      if (file.size > MAX_FILE_SIZE) {
-        serverLogger.error('File size exceeds the 5MB limit', { fileSize: file.size })
-        return c.json({ error: 'File size exceeds the 5MB limit.' }, 400)
       }
 
       const filename = 'thumbnail' + fileExt
@@ -579,21 +574,8 @@ postsAPI.put(
       const arrayBuffer = await (file as Blob).arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
 
-      // Magic number check
-      const header = buffer.subarray(0, 12)
-      let isValidMagicNumber = false
-
-      if (file.type === 'image/jpeg') {
-        isValidMagicNumber = header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF
-      } else if (file.type === 'image/png') {
-        isValidMagicNumber = header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47
-      } else if (file.type === 'image/webp') {
-        const isRiff = header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46
-        const isWebp = header[8] === 0x57 && header[9] === 0x45 && header[10] === 0x42 && header[11] === 0x50
-        isValidMagicNumber = isRiff && isWebp
-      }
-
-      if (!isValidMagicNumber) {
+      if (!validateImageMagicNumber(file.type, buffer)) {
+        const header = buffer.subarray(0, 12)
         serverLogger.error('Magic number check failed', { fileType: file.type, header: header.toString('hex') })
         return c.json({ error: 'Invalid file content.' }, 400)
       }
@@ -679,7 +661,7 @@ postsAPI.put(
       console.log(context)
       const sanitizedContext = await unified()
         .use(rehypeParse)
-        // .use(rehypeSanitize)
+        .use(rehypeSanitize)
         .use(rehypeRemark)
         .use(remarkStringify)
         .process(context)
