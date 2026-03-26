@@ -115,6 +115,7 @@ const inferUserAction = (method: string, path: string): string => {
   if (method === 'PUT' && /^\/api\/posts\/.+\/thumbnail$/.test(path)) return 'update_post_thumbnail';
   if (method === 'PUT' && /^\/api\/posts\/.+/.test(path)) return 'update_post';
   if (method === 'DELETE' && /^\/api\/posts\/.+/.test(path)) return 'delete_post';
+  if (method === 'PATCH' && /^\/api\/posts\/.+/.test(path)) return 'restore_post';
   if (method === 'GET' && path.startsWith('/api/posts')) return 'view_posts';
   if (method === 'GET' && path.startsWith('/api/account')) return 'view_account';
   if (method === 'GET' && path.startsWith('/api/users')) return 'view_users';
