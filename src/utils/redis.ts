@@ -3,7 +3,7 @@ import { serverLogger } from './logger.js';
 
 const redis = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '3002'),
+  port: Number.parseInt(process.env.REDIS_PORT || '3002'),
 });
 
 redis.on('connect', () => {
