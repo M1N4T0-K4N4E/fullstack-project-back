@@ -122,6 +122,9 @@ const inferUserAction = (method: string, path: string): string => {
   if (method === 'GET' && path === '/api/logs/server') return 'view_server_logs';
   if (method === 'GET' && path === '/api/logs/files') return 'view_log_files';
   if (method === 'GET' && /^\/api\/logs\/files\/.+/.test(path)) return 'view_log_file_content';
+  if (method === 'POST' && path === '/api/account/ban') return 'ban_user';
+  if (method === 'GET' && path === '/scalar') return 'view_api_doc';
+  if (method === 'GET' && path === '/doc') return 'view_api_doc';
   return 'unknown';
 };
 
