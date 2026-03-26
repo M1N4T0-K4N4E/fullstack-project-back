@@ -10,8 +10,8 @@ import type { Variables } from '../middleware/auth.js'
 import { PAGINATION, USER_ROLES, USER_STATUS } from '../constants.js'
 import redis from '../utils/redis.js'
 import { parse, GlslSyntaxError } from '@shaderfrog/glsl-parser'
-import path from 'path'
-import * as fs from 'fs'
+import path from 'node:path'
+import * as fs from 'node:fs'
 import { unified } from 'unified'
 import rehypeParse from 'rehype-parse'
 import rehypeSanitize from 'rehype-sanitize'
@@ -767,7 +767,6 @@ postsAPI.put(
   }),
   authMiddleware,
   async (c) => {
-    const id = c.req.param('id')
     const user = c.get('user')
     const postId = c.req.param('id')
 
@@ -933,13 +932,11 @@ postsAPI.put(
         return c.json({ error: 'Post not found' }, 404)
       }
 
-
-      const [updatedPost] = await db.update(posts)
+      await db.update(posts)
         .set({
           dislike: post.dislike + 1
         })
         .where(eq(posts.id, id))
-        .returning()
 
       const dislike = await db.query.postDislikes.findFirst({
         where: eq(postDislikes.userId, user.id)
