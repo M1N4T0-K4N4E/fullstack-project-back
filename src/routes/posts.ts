@@ -371,8 +371,12 @@ postsAPI.get(
         where: and(eq(postLikes.postId, id), eq(postLikes.userId, user.id))
       })
 
-      const isUserLiked = liked ? true : false
-
+      let isUserLiked
+      if (liked) {
+        isUserLiked = true
+      } else {
+        isUserLiked = false
+      }
 
       serverLogger.info('Post fetched successfully', { postId: id })
       return c.json({ message: 'Post fetched successfully', post: { ...post, vertex: vertexFile, fragment: fragmentFile, isUserLiked } }, 200)
@@ -538,7 +542,7 @@ postsAPI.put(
       }
 
       const savePath = path.join(targetDir, filename)
-      const arrayBuffer = await (file as Blob).arrayBuffer()
+      const arrayBuffer = await file.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
 
       if (!validateImageMagicNumber(file.type, buffer)) {
