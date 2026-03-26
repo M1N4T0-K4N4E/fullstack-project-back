@@ -5,7 +5,7 @@ import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import redis from '../utils/redis.js';
-import { USER_STATUS } from '../constants.js';
+import { USER_STATUS, USER_ROLES } from '../constants.js';
 import { serverLogger } from '../utils/logger.js';
 
 export type Variables = {
@@ -35,6 +35,18 @@ const setAuthContext = (
   c.set('token', token);
   c.set('payload', payload);
 };
+
+const timeOutcheck = async (user: typeof users.$inferSelect) => {
+  if (user?.timeoutEnd && user.timeoutEnd <= new Date()) {
+    await db.update(users)
+      .set({
+        status: USER_STATUS.ACTIVE,
+        timeoutEnd: null,
+      })
+      .where(eq(users.id, user.id));
+  }
+};
+
 
 const createAuthMiddleware = ({ optional = false, moderatorOrAdmin = false }: AuthMiddlewareOptions = {}) =>
   createMiddleware<{ Variables: Variables }>(async (c, next) => {
@@ -76,19 +88,12 @@ const createAuthMiddleware = ({ optional = false, moderatorOrAdmin = false }: Au
       }
 
       if (moderatorOrAdmin) {
-        if (user.role !== 'admin' && user.role !== 'moderator') {
+        if (user.role !== USER_ROLES.ADMIN && user.role !== USER_ROLES.MODERATOR) {
           return c.json({ error: 'Forbidden. Moderator or Admin only.' }, 403);
         }
       }
 
-      if (user.timeoutEnd && user.timeoutEnd <= new Date()) {
-        await db.update(users)
-          .set({
-            status: USER_STATUS.ACTIVE,
-            timeoutEnd: null,
-          })
-          .where(eq(users.id, userId));
-      }
+      await timeOutcheck(user);
 
       setAuthContext(c, user, token, payload);
       await next();
