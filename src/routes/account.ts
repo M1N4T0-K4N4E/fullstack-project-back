@@ -307,12 +307,12 @@ accountAPI.put(
         return c.json({ error: 'User not found' }, 404);
       }
 
-      if (targetUser.role === USER_ROLES.ADMIN) {
-        return c.json({ error: 'Forbidden. You cannot ban admin' }, 403);
-      }
-
       if (targetUser.id === user.id) {
         return c.json({ error: 'Forbidden. You cannot ban yourself' }, 403);
+      }
+
+      if (targetUser.role === USER_ROLES.ADMIN) {
+        return c.json({ error: 'Forbidden. You cannot ban admin' }, 403);
       }
 
       await db.update(users)
