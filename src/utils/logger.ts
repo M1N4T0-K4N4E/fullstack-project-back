@@ -44,7 +44,7 @@ class DrizzleServerTransport extends Transport {
     db.insert(serverLogs).values({
       level,
       message,
-      meta: Object.keys(meta).length > 0 ? meta : null
+      meta
     }).catch(e => {
       console.error('Failed to log to DB:', e);
     });
@@ -203,21 +203,16 @@ export const userInteractionLogger: MiddlewareHandler = async (c, next) => {
   }
   
   // Save to Database
-  try {
-    await db.insert(userInteractions).values({
-      userId,
-      userEmail,
-      userRole,
-      action,
-      method,
-      path,
-      status,
-      durationMs: ms,
-      ip,
-      userAgent
-    });
-  } catch (e) {
-    // Avoid infinite loop if serverLogger throws by just using native console
-    console.error('Failed to insert user interaction to DB:', e);
-  }
+  await db.insert(userInteractions).values({
+    userId,
+    userEmail,
+    userRole,
+    action,
+    method,
+    path,
+    status,
+    durationMs: ms,
+    ip,
+    userAgent
+  });
 };
