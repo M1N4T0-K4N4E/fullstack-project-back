@@ -283,7 +283,7 @@ authAPI.post(
   }
 );
 
-// Email/Password Login
+// POST /api/auth/login - Email/Password Login
 authAPI.post(
   '/login',
   describeRoute({
