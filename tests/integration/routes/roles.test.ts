@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 import { USER_ROLES, USER_STATUS } from '../../../src/constants.js';
+import { serverLogger } from '../../../src/utils/logger.js';
 
 type TestUser = {
   id: string;
@@ -125,6 +126,70 @@ describe('Roles Routes Integration', () => {
 
     expect(res.status).toBe(404);
     expect(body).toEqual({ error: 'User not found' });
+  });
+
+  it('PUT /api/roles returns 403 when target is admin', async () => {
+    const app = createTestApp();
+    mocks.usersFindFirstMock.mockResolvedValueOnce({
+      id: 'admin-2',
+      role: USER_ROLES.ADMIN,
+    });
+
+    const res = await app.request('/api/roles', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'admin-2', role: USER_ROLES.MODERATOR }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: 'Forbidden. You cannot update admin role' });
+  });
+
+  it('PUT /api/roles returns 403 when user tries to update own role', async () => {
+    const app = createTestApp();
+    mocks.usersFindFirstMock.mockResolvedValueOnce({
+      id: 'admin-1',
+      role: USER_ROLES.USER,
+    });
+
+    const res = await app.request('/api/roles', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'admin-1', role: USER_ROLES.MODERATOR }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: 'Forbidden. You cannot update your role' });
+  });
+
+  it('PUT /api/roles returns 500 when query fails', async () => {
+    const app = createTestApp();
+    mocks.usersFindFirstMock.mockRejectedValueOnce(new Error('db down'));
+
+    const res = await app.request('/api/roles', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'u1', role: USER_ROLES.MODERATOR }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Role update failed' });
+  });
+
+  it('GET /api/roles returns 500 when role list handler throws', async () => {
+    const app = createTestApp();
+    vi.mocked(serverLogger.info).mockImplementationOnce(() => {
+      throw new Error('logger fail');
+    });
+
+    const res = await app.request('/api/roles');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Role list failed' });
   });
 
   it('PUT /api/roles updates role successfully for admin', async () => {

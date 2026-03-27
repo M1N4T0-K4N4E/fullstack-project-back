@@ -25,9 +25,9 @@ const mocks = vi.hoisted(() => {
   const updateSetMock = vi.fn(() => ({ where: updateWhereMock }));
   const updateMock = vi.fn(() => ({ set: updateSetMock }));
 
-  const countValue = { value: 2 };
+  const countValue: { value: number | Error } = { value: 2 };
   const listValue = { value: [] as any[] };
-  const byIdValue = { value: [] as any[] };
+  const byIdValue: { value: any[] | Error } = { value: [] as any[] };
 
   return {
     selectMock,
@@ -52,6 +52,11 @@ vi.mock('../../../src/db/index.js', () => ({
     select: (...args: any[]) => {
       const firstArg = args[0] ?? {};
       if (firstArg.count) {
+        if (mocks.countValue.value instanceof Error) {
+          return {
+            from: () => Promise.reject(mocks.countValue.value),
+          };
+        }
         return {
           from: () => Promise.resolve([{ count: mocks.countValue.value }]),
         };
@@ -64,7 +69,12 @@ vi.mock('../../../src/db/index.js', () => ({
               offset: () => Promise.resolve(mocks.listValue.value),
             }),
           }),
-          where: () => Promise.resolve(mocks.byIdValue.value),
+          where: () => {
+            if (mocks.byIdValue.value instanceof Error) {
+              return Promise.reject(mocks.byIdValue.value);
+            }
+            return Promise.resolve(mocks.byIdValue.value);
+          },
         }),
       };
     },
@@ -142,6 +152,17 @@ describe('Users Routes Integration', () => {
     expect(body.data.length).toBe(2);
   });
 
+  it('GET /api/users returns 500 when query fails', async () => {
+    const app = createTestApp();
+    mocks.countValue.value = new Error('db down');
+
+    const res = await app.request('/api/users?page=1&limit=10');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to fetch users' });
+  });
+
   it('GET /api/users/:id returns 404 when missing', async () => {
     const app = createTestApp();
     mocks.byIdValue.value = [];
@@ -164,6 +185,50 @@ describe('Users Routes Integration', () => {
     expect(body.message).toBe('User fetched successfully');
   });
 
+  it('GET /api/users/:id returns 500 when query fails', async () => {
+    const app = createTestApp();
+    mocks.byIdValue.value = new Error('db down');
+
+    const res = await app.request('/api/users/u1');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to fetch user detail' });
+  });
+
+  it('GET /api/users/id/:id returns user when found', async () => {
+    const app = createTestApp();
+    mocks.byIdValue.value = [{ id: 'u1', email: 'a@example.com', role: USER_ROLES.USER }];
+
+    const res = await app.request('/api/users/id/u1');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.message).toBe('User fetched successfully');
+  });
+
+  it('GET /api/users/id/:id returns 404 when missing', async () => {
+    const app = createTestApp();
+    mocks.byIdValue.value = [];
+
+    const res = await app.request('/api/users/id/u404');
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body).toEqual({ error: 'User not found' });
+  });
+
+  it('GET /api/users/id/:id returns 500 when query fails', async () => {
+    const app = createTestApp();
+    mocks.byIdValue.value = new Error('db down');
+
+    const res = await app.request('/api/users/id/u1');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to fetch user detail' });
+  });
+
   it('POST /api/users/timeout/:id returns 403 when target is moderator', async () => {
     const app = createTestApp();
     mocks.byIdValue.value = [{ id: 'mod-1', role: USER_ROLES.MODERATOR }];
@@ -179,6 +244,36 @@ describe('Users Routes Integration', () => {
     expect(body).toEqual({ error: 'Forbidden. You cannot timeout admin or moderator' });
   });
 
+  it('POST /api/users/timeout/:id returns 404 when target is missing', async () => {
+    const app = createTestApp();
+    mocks.byIdValue.value = [];
+
+    const res = await app.request('/api/users/timeout/missing-user', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ duration: 2 }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body).toEqual({ error: 'User not found' });
+  });
+
+  it('POST /api/users/timeout/:id returns 403 when user timeouts self', async () => {
+    const app = createTestApp();
+    mocks.byIdValue.value = [{ id: 'admin-1', role: USER_ROLES.USER }];
+
+    const res = await app.request('/api/users/timeout/admin-1', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ duration: 2 }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: 'Forbidden. You cannot timeout yourself' });
+  });
+
   it('POST /api/users/timeout/:id timeouts user successfully', async () => {
     const app = createTestApp();
     mocks.byIdValue.value = [{ id: 'u1', role: USER_ROLES.USER }];
@@ -192,5 +287,21 @@ describe('Users Routes Integration', () => {
 
     expect(res.status).toBe(200);
     expect(body.message).toBe('Timeout user successfully');
+  });
+
+  it('POST /api/users/timeout/:id returns 500 when update fails', async () => {
+    const app = createTestApp();
+    mocks.byIdValue.value = [{ id: 'u1', role: USER_ROLES.USER }];
+    mocks.updateReturningMock.mockRejectedValueOnce(new Error('update failed'));
+
+    const res = await app.request('/api/users/timeout/u1', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ duration: 2 }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to timeout user' });
   });
 });
