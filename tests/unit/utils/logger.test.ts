@@ -121,6 +121,32 @@ describe('Logger Utils (real module)', () => {
     );
   });
 
+  it.each([
+    { method: 'POST', path: '/api/auth/logout', action: 'logout' },
+    { method: 'POST', path: '/api/auth/refresh', action: 'refresh_token' },
+    { method: 'PUT', path: '/api/posts/post-1/thumbnail', action: 'update_post_thumbnail' },
+    { method: 'PUT', path: '/api/posts/post-1/publish', action: 'publish_post' },
+    { method: 'PUT', path: '/api/posts/post-1', action: 'update_post' },
+    { method: 'DELETE', path: '/api/posts/post-1', action: 'delete_post' },
+    { method: 'PATCH', path: '/api/posts/post-1', action: 'restore_post' },
+    { method: 'POST', path: '/api/account/ban', action: 'ban_user' },
+  ])('infers $action for $method $path', async ({ method, path, action }) => {
+    const app = new Hono();
+    app.use('*', userInteractionLogger);
+    app.all('/api/*', (c) => c.json({ ok: true }, 200));
+
+    const res = await app.request(path, { method });
+
+    expect(res.status).toBe(200);
+    expect(mocks.insertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action,
+        method,
+        path,
+      }),
+    );
+  });
+
   it('uses guest identity fields when request is unauthenticated', async () => {
     const app = new Hono();
     app.use('*', userInteractionLogger);
