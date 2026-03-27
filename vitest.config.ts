@@ -19,7 +19,7 @@ export default defineConfig({
                 'dist/',
                 '**/*.config.ts',
                 '**/*.d.ts',
-                'src/db/**',
+                'src/db/schema.ts',
             ],
         },
     },
