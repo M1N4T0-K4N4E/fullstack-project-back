@@ -101,7 +101,7 @@ vi.mock('../../../src/middleware/auth.js', () => ({
 
 import accountRoute from '../../../src/routes/account.js';
 
-const createTestApp = (userOverride?: Record<string, unknown>) => {
+const createTestApp = (userOverride?: Record<string, unknown>, roleOverride?: string) => {
   const app = new Hono<TestEnv>();
   app.use('/api/account/*', async (c, next) => {
     c.set('user', {
@@ -109,7 +109,7 @@ const createTestApp = (userOverride?: Record<string, unknown>) => {
       email: 'user-1@example.com',
       name: 'User One',
       password: 'hashed-password',
-      role: USER_ROLES.USER,
+      role: roleOverride || USER_ROLES.USER,
       status: USER_STATUS.ACTIVE,
       avatarUrl: null,
       createdAt: new Date(),
@@ -172,6 +172,35 @@ describe('Account Routes Integration', () => {
     expect(body).toEqual({ message: 'Account updated successfully', token: 'new-jwt-token' });
   });
 
+  it('PUT /api/account updates account avatar and returns token', async () => {
+    const app = createTestApp();
+
+    const res = await app.request('/api/account', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ avatarUrl: 'https://example.com/avatar.jpg' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ message: 'Account updated successfully', token: 'new-jwt-token' });
+  });
+
+  it('PUT /api/account updates account return 500 on DB error', async () => {
+    const app = createTestApp();
+    mocks.updateReturningMock.mockRejectedValue(new Error('DB Error'));
+
+    const res = await app.request('/api/account', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Updated Name' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to update account' });
+  });
+
   it('PUT /api/account/password returns 400 for OAuth user', async () => {
     const app = createTestApp({ password: null });
 
@@ -201,6 +230,42 @@ describe('Account Routes Integration', () => {
     expect(body).toEqual({ error: 'Invalid current password' });
   });
 
+  it('PUT /api/account/password returns 200 for valid password change', async () => {
+    const app = createTestApp();
+    mocks.verifyMock.mockResolvedValueOnce(true);
+    mocks.hashMock.mockResolvedValueOnce('new-hashed-password');
+    mocks.signMock.mockResolvedValueOnce('new-jwt-token');
+
+    const res = await app.request('/api/account/password', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ currentPassword: 'wrong', newPassword: 'password123456789' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ message: 'Password updated successfully', token: 'new-jwt-token' });
+  });
+
+  it('PUT /api/account/password returns 500 when DB is down', async () => {
+    const app = createTestApp();
+    mocks.verifyMock.mockResolvedValueOnce(true);
+    mocks.hashMock.mockResolvedValueOnce('new-hashed-password');
+    mocks.updateMock.mockImplementationOnce(() => {
+      throw new Error('DB is down');
+    });
+
+    const res = await app.request('/api/account/password', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ currentPassword: 'correct', newPassword: 'password123456789' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to change password' });
+  });
+
   it('PUT /api/account/ban returns 403 for non-admin caller', async () => {
     const app = createTestApp({ role: USER_ROLES.USER });
 
@@ -213,6 +278,25 @@ describe('Account Routes Integration', () => {
 
     expect(res.status).toBe(403);
     expect(body).toEqual({ error: 'Forbidden' });
+  });
+
+  it('PUT /api/account/ban returns 403 for admin baning admin', async () => {
+    const app = createTestApp({ role: USER_ROLES.ADMIN }, USER_ROLES.ADMIN);
+    mocks.usersFindFirstMock.mockResolvedValueOnce({
+      id: 'target-user',
+      role: USER_ROLES.ADMIN,
+      status: USER_STATUS.ACTIVE,
+    });
+
+    const res = await app.request('/api/account/ban', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'target-user' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: 'Forbidden. You cannot ban admin' });
   });
 
   it('PUT /api/account/ban bans target user for admin caller', async () => {
@@ -228,5 +312,58 @@ describe('Account Routes Integration', () => {
     expect(res.status).toBe(200);
     expect(body).toEqual({ message: 'User banned successfully' });
     expect(mocks.updateMock).toHaveBeenCalled();
+  });
+
+  it('PUT /api/account/ban can not ban non-existent user', async () => {
+    const app = createTestApp({ role: USER_ROLES.ADMIN });
+    mocks.usersFindFirstMock.mockResolvedValueOnce(null);
+
+    const res = await app.request('/api/account/ban', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'target-user' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body).toEqual({ error: 'User not found' });
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT /api/account/ban admin can not ban self', async () => {
+    const app = createTestApp({ role: USER_ROLES.ADMIN });
+    mocks.usersFindFirstMock.mockResolvedValueOnce({
+      id: 'user-1',
+      role: USER_ROLES.ADMIN,
+      status: USER_STATUS.ACTIVE,
+    });
+
+    const res = await app.request('/api/account/ban', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'user-1' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: 'Forbidden. You cannot ban yourself' });
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('PUT /api/account/ban returns 500 on database error', async () => {
+    const app = createTestApp({ role: USER_ROLES.ADMIN });
+    mocks.updateMock.mockImplementationOnce(() => {
+      throw new Error('DB Error');
+    });
+
+    const res = await app.request('/api/account/ban', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'user-1' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to ban user' });
   });
 });

@@ -116,6 +116,20 @@ describe('Auth Middleware (real module)', () => {
     expect(body).toEqual({ ok: true, userId: null });
   });
 
+  it('accepts raw token without Bearer prefix', async () => {
+    const app = buildApp(authMiddleware);
+
+    const res = await app.request('/protected', {
+      headers: { Authorization: 'raw-token-value' },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, userId: 'user-1' });
+    expect(mocks.jwtVerifyMock).toHaveBeenCalledWith('raw-token-value', expect.any(Uint8Array));
+    expect(mocks.redisGetMock).toHaveBeenCalledWith('raw-token-value');
+  });
+
   it('returns 401 when token is blacklisted', async () => {
     const app = buildApp(authMiddleware);
     mocks.redisGetMock.mockResolvedValueOnce('1');
@@ -209,6 +223,32 @@ describe('Auth Middleware (real module)', () => {
 
     expect(res.status).toBe(401);
     expect(body).toEqual({ error: 'Invalid token' });
+  });
+
+  it('returns 401 when jwt payload has no sub', async () => {
+    const app = buildApp(authMiddleware);
+    mocks.jwtVerifyMock.mockResolvedValueOnce({ payload: {} });
+
+    const res = await app.request('/protected', {
+      headers: { Authorization: 'Bearer missing-sub-token' },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body).toEqual({ error: 'Invalid token' });
+  });
+
+  it('allows guest middleware when jwtVerify throws', async () => {
+    const app = buildApp(authGuestMiddleware);
+    mocks.jwtVerifyMock.mockRejectedValueOnce(new Error('bad token'));
+
+    const res = await app.request('/protected', {
+      headers: { Authorization: 'Bearer invalid-token' },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, userId: null });
   });
 });
 

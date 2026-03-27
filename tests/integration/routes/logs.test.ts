@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
 
 const mocks = vi.hoisted(() => {
-  const serverCount = { value: 2 };
-  const userCount = { value: 1 };
+  const serverCount: { value: number | Error } = { value: 2 };
+  const userCount: { value: number | Error } = { value: 1 };
   const serverRows = { value: [{ id: 's1', level: 'info', message: 'ok' }] as any[] };
   const userRows = { value: [{ id: 'u1', path: '/api/posts', status: 200 }] as any[] };
 
@@ -41,7 +41,13 @@ vi.mock('../../../src/db/index.js', () => ({
           from: (table: any) => {
             const tableName = String(table?.[Symbol.toStringTag] ?? table?.toString?.() ?? '');
             if (tableName.includes('server_logs')) {
+              if (mocks.serverCount.value instanceof Error) {
+                return Promise.reject(mocks.serverCount.value);
+              }
               return Promise.resolve([{ count: mocks.serverCount.value }]);
+            }
+            if (mocks.userCount.value instanceof Error) {
+              return Promise.reject(mocks.userCount.value);
             }
             return Promise.resolve([{ count: mocks.userCount.value }]);
           },
@@ -113,6 +119,29 @@ describe('Logs Routes Integration', () => {
     expect(body.data.length).toBe(1);
   });
 
+  it('GET /api/logs/server returns 500 when database error', async () => {
+    const app = createTestApp();
+    mocks.serverCount.value = new Error('DB failed');
+    mocks.userCount.value = new Error('DB failed');
+
+    const res = await app.request('/api/logs/server?page=1&limit=10');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to fetch server logs' });
+  });
+
+  it('GET /api/logs/user returns 500 when database throws', async () => {
+    const app = createTestApp();
+    mocks.userCount.value = new Error('DB failed');
+
+    const res = await app.request('/api/logs/user?page=1&limit=10');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to fetch user interactions' });
+  });
+
   it('GET /api/logs/files returns empty list when logs dir is missing', async () => {
     const app = createTestApp();
     mocks.fsExistsSyncMock.mockReturnValueOnce(false);
@@ -146,6 +175,33 @@ describe('Logs Routes Integration', () => {
     expect(body).toEqual({ error: 'Log file not found' });
   });
 
+  it('GET /api/logs/files/ return 500 when file list failed', async () => {
+    const app = createTestApp();
+    mocks.fsExistsSyncMock.mockReturnValueOnce(true);
+    mocks.fsReaddirSyncMock.mockImplementationOnce(() => {
+      throw new Error('Read dir failed');
+    });
+
+    const res = await app.request('/api/logs/files');
+    const body = await res.json();
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to list log files' });
+  });
+
+  it('GET /api/logs/files/:filename returns 500 when file read fails', async () => {
+    const app = createTestApp();
+    mocks.fsExistsSyncMock.mockReturnValueOnce(true);
+    mocks.fsReadFileSyncMock.mockImplementationOnce(() => {
+      throw new Error('Read failed');
+    });
+
+    const res = await app.request('/api/logs/files/server.log');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to read log file' });
+  });
+
   it('GET /api/logs/files/:filename returns file content', async () => {
     const app = createTestApp();
     mocks.fsExistsSyncMock.mockReturnValueOnce(true);
@@ -155,5 +211,19 @@ describe('Logs Routes Integration', () => {
 
     expect(res.status).toBe(200);
     expect(text).toContain('line1');
+  });
+
+  it('GET /api/logs/files/:filename returns 500 when file read fails', async () => {
+    const app = createTestApp();
+    mocks.fsExistsSyncMock.mockReturnValueOnce(true);
+    mocks.fsReadFileSyncMock.mockImplementationOnce(() => {
+      throw new Error('Read failed');
+    });
+
+    const res = await app.request('/api/logs/files/server.log');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to read log file' });
   });
 });

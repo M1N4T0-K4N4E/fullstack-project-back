@@ -460,6 +460,36 @@ describe('Auth Routes Integration', () => {
     expect(mocks.redisDelMock).toHaveBeenCalledWith('refresh_token:jti-1');
   });
 
+  it('POST /api/auth/logout returns 500 when redis blacklist fails', async () => {
+    const app = createTestApp();
+    mocks.redisSetMock.mockRejectedValueOnce(new Error('Redis down'));
+
+    const res = await app.request('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: 'refresh-token-signed' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Logout failed' });
+  });
+
+  it('POST /api/auth/logout returns 200 when redis delete refresh token fails', async () => {
+    const app = createTestApp();
+    mocks.redisDelMock.mockRejectedValueOnce(new Error('Redis down'));
+
+    const res = await app.request('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: 'refresh-token-signed' }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ message: 'Logged out successfully' });
+  });
+
   it('POST /api/auth/refresh returns 200 with a new access token', async () => {
     const app = createTestApp();
 
@@ -552,4 +582,67 @@ describe('Auth Routes Integration', () => {
     expect(res.status).toBe(401);
     expect(body).toEqual({ error: 'Invalid refresh token' });
   });
+
+  it('POST /api/auth/register Failed registration due to database error', async () => {
+    const app = createTestApp();
+
+    mocks.insertMock.mockImplementationOnce(() => {
+      throw new Error('Database error');
+    });
+
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'user@example.com',
+        password: 'password123asdasdasdasdasd',
+        name: 'User One'
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Registration failed' });
+  });
+
+  it('POST /api/auth/login Failed login due to database error', async () => {
+    const app = createTestApp();
+
+    mocks.usersFindFirstMock.mockImplementationOnce(() => {
+      throw new Error('Database error');
+    });
+
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'user@example.com',
+        password: 'password123'
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Login failed' });
+  });
+
+  it('POST /api/google/callback New user failed to login via google due to database error', async () => {
+    const app = createTestApp();
+    mocks.usersFindFirstMock.mockResolvedValueOnce(null);
+    mocks.insertMock.mockImplementationOnce(() => {
+      throw new Error('Database error');
+    });
+
+    const res = await app.request('/api/auth/google/callback?code=auth-code&state=mock-state', {
+      headers: {
+        Cookie: 'google_oauth_state=mock-state; google_code_verifier=mock-code-verifier',
+      },
+    });
+    const body = await res.json();
+    
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Authentication failed' });
+  })
+
+  
 });
