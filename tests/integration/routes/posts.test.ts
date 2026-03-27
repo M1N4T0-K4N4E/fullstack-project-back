@@ -213,6 +213,12 @@ const createTestApp = (userOverride?: Partial<{ id: string; email: string; role:
   return app;
 };
 
+const createGuestTestApp = () => {
+  const app = new Hono<TestEnv>();
+  app.route('/api/posts', postsRoute);
+  return app;
+};
+
 describe('Posts Routes Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -291,6 +297,66 @@ describe('Posts Routes Integration', () => {
     expect(body).toEqual({ error: 'Failed to fetch posts' });
   });
 
+  it('GET /api/posts returns paginated posts for admin role', async () => {
+    const app = createTestApp({ role: USER_ROLES.ADMIN });
+
+    const res = await app.request('/api/posts?page=1&limit=10');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      data: expect.any(Array),
+      total: 2,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+    });
+  });
+
+  it('GET /api/posts returns paginated posts for guest fallback user', async () => {
+    const app = createGuestTestApp();
+
+    const res = await app.request('/api/posts?page=1&limit=10');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      data: expect.any(Array),
+      total: 2,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+    });
+  });
+
+  it('GET /api/posts/@me returns paginated own posts', async () => {
+    const app = createTestApp();
+
+    const res = await app.request('/api/posts/@me?page=1&limit=10');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      data: expect.any(Array),
+      total: 2,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+    });
+  });
+
+  it('GET /api/posts/@me returns 500 on query failure', async () => {
+    const app = createTestApp();
+
+    mocks.selectWhereMock.mockRejectedValueOnce(new Error('db down'));
+
+    const res = await app.request('/api/posts/@me?page=1&limit=10');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to fetch posts' });
+  });
+
   it('GET /api/posts/:id returns 404 when post is not found', async () => {
     const app = createTestApp();
 
@@ -332,6 +398,78 @@ describe('Posts Routes Integration', () => {
       fragment: 'fragment-shader',
       isUserLiked: false,
     });
+  });
+
+  it('GET /api/posts/:id returns isUserLiked true when like exists', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      title: 'Shader A',
+      context: 'Context A',
+      thumbnail: null,
+      like: 5,
+      dislike: 1,
+      isPublic: true,
+      isDeleted: false,
+      createdAt: new Date(),
+      user: { name: 'Alice' },
+    });
+    mocks.redisGetMock.mockResolvedValueOnce('vertex-shader').mockResolvedValueOnce('fragment-shader');
+    mocks.postLikesFindFirstMock.mockResolvedValueOnce({
+      id: 'like-1',
+      userId: 'user-1',
+      postId: 'post-1',
+    });
+
+    const res = await app.request('/api/posts/post-1');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.post).toMatchObject({
+      id: 'post-1',
+      isUserLiked: true,
+    });
+  });
+
+  it('GET /api/posts/:id works with guest fallback user context', async () => {
+    const app = createGuestTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      title: 'Shader A',
+      context: 'Context A',
+      thumbnail: null,
+      like: 5,
+      dislike: 1,
+      isPublic: true,
+      isDeleted: false,
+      createdAt: new Date(),
+      user: { name: 'Alice' },
+    });
+    mocks.redisGetMock.mockResolvedValueOnce('vertex-shader').mockResolvedValueOnce('fragment-shader');
+    mocks.postLikesFindFirstMock.mockResolvedValueOnce(null);
+
+    const res = await app.request('/api/posts/post-1');
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.post).toMatchObject({
+      id: 'post-1',
+      isUserLiked: false,
+    });
+  });
+
+  it('GET /api/posts/:id returns 500 when fetching detail fails', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockRejectedValueOnce(new Error('db down'));
+
+    const res = await app.request('/api/posts/post-1');
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to fetch post detail' });
   });
 
   it('POST /api/posts creates a post for active user', async () => {
@@ -409,6 +547,85 @@ describe('Posts Routes Integration', () => {
 
     expect(res.status).toBe(500);
     expect(body).toEqual({ error: 'Failed to create post' });
+  });
+
+  it('PUT /api/posts/posts/:id/publish publishes post successfully for owner', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+
+    const res = await app.request('/api/posts/posts/post-1/publish', {
+      method: 'PUT',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ message: 'Post published successfully' });
+    expect(mocks.updateMock).toHaveBeenCalled();
+  });
+
+  it('PUT /api/posts/posts/:id/publish returns 403 for timeout user', async () => {
+    const app = createTestApp({ status: USER_STATUS.TIMEOUT });
+
+    const res = await app.request('/api/posts/posts/post-1/publish', {
+      method: 'PUT',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: 'Forbidden. You are timeout.' });
+  });
+
+  it('PUT /api/posts/posts/:id/publish returns 404 when post is not found', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce(null);
+
+    const res = await app.request('/api/posts/posts/missing-post/publish', {
+      method: 'PUT',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body).toEqual({ error: 'Post not found' });
+  });
+
+  it('PUT /api/posts/posts/:id/publish returns 403 for non-owner', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'another-user',
+    });
+
+    const res = await app.request('/api/posts/posts/post-1/publish', {
+      method: 'PUT',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: 'Forbidden. You do not have permission to publish this post.' });
+  });
+
+  it('PUT /api/posts/posts/:id/publish returns 500 when update fails', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.updateReturningMock.mockRejectedValueOnce(new Error('update failed'));
+
+    const res = await app.request('/api/posts/posts/post-1/publish', {
+      method: 'PUT',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to publish post' });
   });
 
   it('PUT /api/posts/like/:id returns 404 when post is not found', async () => {
@@ -492,6 +709,20 @@ describe('Posts Routes Integration', () => {
     expect(body).toEqual({ error: 'Forbidden. You are timeout.' });
   });
 
+  it('PUT /api/posts/like/:id returns 500 when query fails', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockRejectedValueOnce(new Error('db down'));
+
+    const res = await app.request('/api/posts/like/post-1', {
+      method: 'PUT',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to like post' });
+  });
+
   it('PUT /api/posts/dislike/:id returns 404 when post is not found', async () => {
     const app = createTestApp();
 
@@ -551,6 +782,20 @@ describe('Posts Routes Integration', () => {
     expect(res.status).toBe(200);
     expect(body).toEqual({ message: 'Post disliked successfully' });
     expect(mocks.deleteMock).toHaveBeenCalled();
+  });
+
+  it('PUT /api/posts/dislike/:id returns 500 when query fails', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockRejectedValueOnce(new Error('db down'));
+
+    const res = await app.request('/api/posts/dislike/post-1', {
+      method: 'PUT',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to dislike post' });
   });
 
   it('PUT /api/posts/dislike/:id returns 403 for timeout user', async () => {
@@ -633,6 +878,24 @@ describe('Posts Routes Integration', () => {
     expect(body).toEqual({ message: 'Post deleted' });
   });
 
+  it('DELETE /api/posts/:id returns 500 when redis keys lookup fails', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.redisKeysMock.mockRejectedValueOnce(new Error('redis down'));
+
+    const res = await app.request('/api/posts/post-1', {
+      method: 'DELETE',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to delete post' });
+  });
+
   it('PATCH /api/posts/:id/restore returns 403 when user is not owner', async () => {
     const app = createTestApp();
 
@@ -666,6 +929,43 @@ describe('Posts Routes Integration', () => {
     expect(res.status).toBe(200);
     expect(body).toEqual({ message: 'Post restored' });
     expect(mocks.updateMock).toHaveBeenCalled();
+  });
+
+  it('PATCH /api/posts/:id/restore deletes redis files when keys exist', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.redisKeysMock.mockResolvedValueOnce(['post-file:post-1:vertex']);
+
+    const res = await app.request('/api/posts/post-1/restore', {
+      method: 'PATCH',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ message: 'Post restored' });
+    expect(mocks.redisDelMock).toHaveBeenCalledWith('post-file:post-1:vertex');
+  });
+
+  it('PATCH /api/posts/:id/restore returns 500 when redis keys lookup fails', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.redisKeysMock.mockRejectedValueOnce(new Error('redis down'));
+
+    const res = await app.request('/api/posts/post-1/restore', {
+      method: 'PATCH',
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to restore post' });
   });
 
   it('PATCH /api/posts/:id/restore returns 404 when post does not exist', async () => {
@@ -749,6 +1049,37 @@ describe('Posts Routes Integration', () => {
     expect(body).toEqual({ error: 'Invalid GLSL syntax' });
   });
 
+  it('PUT /api/posts/:id returns 400 for invalid fragment GLSL syntax', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.parseMock
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => {
+        throw new Error('invalid fragment glsl');
+      });
+
+    const res = await app.request('/api/posts/post-1', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Updated',
+        context: '<p>ok</p>',
+        vertex: 'void main(){}',
+        fragment: 'bad shader',
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toEqual({ error: 'Invalid GLSL syntax' });
+  });
+
   it('PUT /api/posts/:id updates post successfully', async () => {
     const app = createTestApp();
 
@@ -775,6 +1106,37 @@ describe('Posts Routes Integration', () => {
     expect(body).toEqual({ message: 'Post updated successfully' });
     expect(mocks.transactionMock).toHaveBeenCalled();
     expect(mocks.redisSetMock).toHaveBeenCalled();
+  });
+
+  it('PUT /api/posts/:id deletes previous redis files before saving new ones', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.redisGetMock
+      .mockResolvedValueOnce('old-vertex')
+      .mockResolvedValueOnce('old-fragment');
+
+    const res = await app.request('/api/posts/post-1', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Updated title',
+        context: '<p>safe</p>',
+        vertex: 'void main(){}',
+        fragment: 'void main(){}',
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ message: 'Post updated successfully' });
+    expect(mocks.redisDelMock).toHaveBeenCalledWith('post-file:post-1:vertex');
+    expect(mocks.redisDelMock).toHaveBeenCalledWith('post-file:post-1:fragment');
   });
 
   it('PUT /api/posts/:id returns 403 for timeout user', async () => {
@@ -823,6 +1185,60 @@ describe('Posts Routes Integration', () => {
     expect(mocks.redisDelMock).toHaveBeenCalled();
   });
 
+  it('PUT /api/posts/:id returns 500 when sanitizer process throws', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.unifiedProcessMock.mockRejectedValueOnce(new Error('sanitize failed'));
+
+    const res = await app.request('/api/posts/post-1', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Updated title',
+        context: '<p>safe</p>',
+        vertex: 'void main(){}',
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to update post' });
+  });
+
+  it('PUT /api/posts/:id stores empty context when sanitizer returns nullish value', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.unifiedProcessMock.mockResolvedValueOnce(undefined);
+
+    const res = await app.request('/api/posts/post-1', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Updated title',
+        context: '<p>safe</p>',
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ message: 'Post updated successfully' });
+    expect(mocks.txUpdateSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ context: '' }),
+    );
+  });
+
   it('PUT /api/posts/:id/thumbnail returns 400 for invalid image file', async () => {
     const app = createTestApp();
 
@@ -844,6 +1260,29 @@ describe('Posts Routes Integration', () => {
 
     expect(res.status).toBe(400);
     expect(body).toEqual({ error: 'Invalid file type. Only JPEG, PNG, and WEBP are allowed.' });
+  });
+
+  it('PUT /api/posts/:id/thumbnail returns default invalid image message when validator has no error', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.usersFindFirstMock.mockResolvedValueOnce({ status: USER_STATUS.ACTIVE });
+    mocks.validateImageFileMock.mockReturnValueOnce({ valid: false });
+
+    const formData = new FormData();
+    formData.append('file', new Blob(['fake-image'], { type: 'text/plain' }), 'test.txt');
+
+    const res = await app.request('/api/posts/post-1/thumbnail', {
+      method: 'PUT',
+      body: formData,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toEqual({ error: 'Invalid image file.' });
   });
 
   it('PUT /api/posts/:id/thumbnail updates thumbnail successfully', async () => {
@@ -909,6 +1348,96 @@ describe('Posts Routes Integration', () => {
 
     expect(res.status).toBe(403);
     expect(body).toEqual({ error: 'Forbidden. You do not have permission to update this post.' });
+  });
+
+  it('PUT /api/posts/:id/thumbnail returns 404 when user status is not found', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.usersFindFirstMock.mockResolvedValueOnce(null);
+
+    const formData = new FormData();
+    formData.append('file', new Blob(['\x89PNG'], { type: 'image/png' }), 'thumb.png');
+
+    const res = await app.request('/api/posts/post-1/thumbnail', {
+      method: 'PUT',
+      body: formData,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body).toEqual({ error: 'User not found' });
+  });
+
+  it('PUT /api/posts/:id/thumbnail returns 403 for timeout user status', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.usersFindFirstMock.mockResolvedValueOnce({ status: USER_STATUS.TIMEOUT });
+
+    const formData = new FormData();
+    formData.append('file', new Blob(['\x89PNG'], { type: 'image/png' }), 'thumb.png');
+
+    const res = await app.request('/api/posts/post-1/thumbnail', {
+      method: 'PUT',
+      body: formData,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body).toEqual({ error: 'Forbidden. You are timeout.' });
+  });
+
+  it('PUT /api/posts/:id/thumbnail returns 400 when file extension cannot be resolved', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.usersFindFirstMock.mockResolvedValueOnce({ status: USER_STATUS.ACTIVE });
+    mocks.getImageExtensionMock.mockReturnValueOnce(null);
+
+    const formData = new FormData();
+    formData.append('file', new Blob(['\x89PNG'], { type: 'image/png' }), 'thumb.png');
+
+    const res = await app.request('/api/posts/post-1/thumbnail', {
+      method: 'PUT',
+      body: formData,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toEqual({ error: 'Invalid file type. Only JPEG, PNG, and WEBP are allowed.' });
+  });
+
+  it('PUT /api/posts/:id/thumbnail returns 500 when write fails', async () => {
+    const app = createTestApp();
+
+    mocks.postsFindFirstMock.mockResolvedValueOnce({
+      id: 'post-1',
+      userId: 'user-1',
+    });
+    mocks.usersFindFirstMock.mockResolvedValueOnce({ status: USER_STATUS.ACTIVE });
+    mocks.fsWriteFileMock.mockRejectedValueOnce(new Error('write failed'));
+
+    const formData = new FormData();
+    formData.append('file', new Blob(['\x89PNG'], { type: 'image/png' }), 'thumb.png');
+
+    const res = await app.request('/api/posts/post-1/thumbnail', {
+      method: 'PUT',
+      body: formData,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to update post thumbnail' });
   });
 
   it('PUT /api/posts/:id/thumbnail returns 400 when magic number is invalid', async () => {
