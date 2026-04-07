@@ -35,3 +35,4 @@ newt.exe
 
 # test
 /coverage
+.env.prod
