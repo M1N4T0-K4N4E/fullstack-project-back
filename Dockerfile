@@ -20,6 +20,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
+COPY drizzle ./drizzle
+COPY drizzle.config.ts ./
 
 RUN mkdir -p uploads/avatars uploads/banners logs
 

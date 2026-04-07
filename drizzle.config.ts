@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 export default defineConfig({
-  schema: './src/db/schema.ts',
+  schema: process.env.DRIZZLE_SCHEMA_PATH ?? './src/db/schema.ts',
   out: './drizzle/migrations',
   dialect: 'postgresql',
   dbCredentials: {
