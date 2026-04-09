@@ -8,7 +8,9 @@ import { authMiddleware, type Variables } from '../middleware/auth.js';
 import { setCookie, getCookie } from 'hono/cookie';
 import * as jose from 'jose';
 import argon2 from 'argon2';
-import { ARGON2_OPTIONS, JWT_EXPIRATION, PASSWORD_MIN_LENGTH } from '../constants.js';
+import { createHash } from 'node:crypto';
+import pwnedpasswords from 'pwnedpasswords';
+import { ARGON2_OPTIONS, AUTH_SECURITY, JWT_EXPIRATION, PASSWORD_MIN_LENGTH } from '../constants.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import redis from '../utils/redis.js';
@@ -25,6 +27,37 @@ const google = new Google(
 );
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET);
+
+const getEmailKey = (email: string) => createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
+
+const getLoginFailureKey = (email: string) => `auth:login:failures:${getEmailKey(email)}`;
+
+const getLoginLockKey = (email: string) => `auth:login:lock:${getEmailKey(email)}`;
+
+const recordFailedLoginAttempt = async (email: string) => {
+  const failureKey = getLoginFailureKey(email);
+  const lockKey = getLoginLockKey(email);
+  const attempts = await redis.incr(failureKey);
+
+  if (attempts === 1) {
+    await redis.expire(failureKey, AUTH_SECURITY.LOGIN_FAILED_ATTEMPTS_WINDOW_SECONDS);
+  }
+
+  if (attempts >= AUTH_SECURITY.LOGIN_FAILED_ATTEMPTS_LIMIT) {
+    await redis.set(lockKey, '1', 'EX', AUTH_SECURITY.LOGIN_LOCK_SECONDS);
+    await redis.del(failureKey);
+    return { locked: true, attempts };
+  }
+
+  return { locked: false, attempts };
+};
+
+const clearLoginThrottle = async (email: string) => {
+  await Promise.all([
+    redis.del(getLoginFailureKey(email)),
+    redis.del(getLoginLockKey(email)),
+  ]);
+};
 
 // Zod Schemas for validation
 const registerSchema = z.object({
@@ -255,6 +288,12 @@ authAPI.post(
         return c.json({ error: 'User already exists' }, 400);
       }
 
+      const breachedPasswordCount = await pwnedpasswords(password);
+      if (breachedPasswordCount > 0) {
+        serverLogger.warn('Registration blocked due to breached password', { userEmail: email, breachCount: breachedPasswordCount });
+        return c.json({ error: 'Password has been found in a data breach. Choose a different password.' }, 400);
+      }
+
       const hashedPassword = await argon2.hash(password, ARGON2_OPTIONS);
 
       const newUser = await db.insert(users).values({
@@ -302,6 +341,13 @@ authAPI.post(
   async (c) => {
     try {
       const { email, password } = c.req.valid('json');
+      const lockKey = getLoginLockKey(email);
+      const isLocked = await redis.get(lockKey);
+
+      if (isLocked) {
+        serverLogger.warn('Login blocked due to rate limit lock', { userEmail: email });
+        return c.json({ error: 'Too many login attempts. Please try again later.' }, 429);
+      }
 
       const user = await db.query.users.findFirst({
         where: eq(users.email, email)
@@ -320,8 +366,15 @@ authAPI.post(
       const isValid = await argon2.verify(user.password, password);
       if (!isValid) {
         serverLogger.warn('Login attempt with invalid password', { userEmail: email });
+        const { locked } = await recordFailedLoginAttempt(email);
+        if (locked) {
+          return c.json({ error: 'Too many login attempts. Please try again later.' }, 429);
+        }
+
         return c.json({ error: 'Invalid credentials' }, 401);
       }
+
+      await clearLoginThrottle(email);
 
       const { accessToken, refreshToken } = await generateTokens({
         id: user.id,

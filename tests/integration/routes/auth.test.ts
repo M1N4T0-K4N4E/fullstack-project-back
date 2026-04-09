@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
-import { USER_ROLES, USER_STATUS } from '../../../src/constants.js';
+import { AUTH_SECURITY, USER_ROLES, USER_STATUS } from '../../../src/constants.js';
 
 const mocks = vi.hoisted(() => {
   const usersFindFirstMock = vi.fn();
@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => {
 
   const redisSetMock = vi.fn();
   const redisGetMock = vi.fn();
+  const redisExpireMock = vi.fn();
+  const redisIncrMock = vi.fn();
   const redisDelMock = vi.fn();
 
   const hashMock = vi.fn();
@@ -21,6 +23,8 @@ const mocks = vi.hoisted(() => {
 
   const signMock = vi.fn();
 
+  const pwnedPasswordsMock = vi.fn();
+
   return {
     usersFindFirstMock,
     insertReturningMock,
@@ -28,12 +32,15 @@ const mocks = vi.hoisted(() => {
     insertMock,
     redisSetMock,
     redisGetMock,
+    redisExpireMock,
+    redisIncrMock,
     redisDelMock,
     hashMock,
     verifyMock,
     jwtVerifyMock,
     uuidMock,
     signMock,
+    pwnedPasswordsMock,
   };
 });
 
@@ -60,8 +67,14 @@ vi.mock('../../../src/utils/redis.js', () => ({
   default: {
     set: mocks.redisSetMock,
     get: mocks.redisGetMock,
+    expire: mocks.redisExpireMock,
+    incr: mocks.redisIncrMock,
     del: mocks.redisDelMock,
   },
+}));
+
+vi.mock('pwnedpasswords', () => ({
+  default: mocks.pwnedPasswordsMock,
 }));
 
 vi.mock('argon2', () => ({
@@ -157,12 +170,15 @@ describe('Auth Routes Integration', () => {
     mocks.insertMock.mockReset();
     mocks.redisSetMock.mockReset();
     mocks.redisGetMock.mockReset();
+    mocks.redisExpireMock.mockReset();
+    mocks.redisIncrMock.mockReset();
     mocks.redisDelMock.mockReset();
     mocks.hashMock.mockReset();
     mocks.verifyMock.mockReset();
     mocks.jwtVerifyMock.mockReset();
     mocks.uuidMock.mockReset();
     mocks.signMock.mockReset();
+    mocks.pwnedPasswordsMock.mockReset();
 
     mocks.insertValuesMock.mockImplementation(() => ({ returning: mocks.insertReturningMock }));
     mocks.insertMock.mockImplementation(() => ({ values: mocks.insertValuesMock }));
@@ -178,11 +194,14 @@ describe('Auth Routes Integration', () => {
     ]);
 
     mocks.redisSetMock.mockResolvedValue('OK');
-    mocks.redisGetMock.mockResolvedValue('user-1');
+    mocks.redisGetMock.mockResolvedValue(null);
+    mocks.redisExpireMock.mockResolvedValue(1);
+    mocks.redisIncrMock.mockResolvedValue(1);
     mocks.redisDelMock.mockResolvedValue(1);
 
     mocks.hashMock.mockResolvedValue('hashed-password');
     mocks.verifyMock.mockResolvedValue(true);
+    mocks.pwnedPasswordsMock.mockResolvedValue(0);
 
     mocks.uuidMock.mockReturnValue('jti-1');
     mocks.signMock.mockImplementation((payload: any) =>
@@ -231,6 +250,29 @@ describe('Auth Routes Integration', () => {
     expect(mocks.redisSetMock).toHaveBeenCalled();
   });
 
+  it('POST /api/auth/register returns 400 when password was breached', async () => {
+    const app = createTestApp();
+
+    mocks.pwnedPasswordsMock.mockResolvedValueOnce(7);
+
+    const res = await app.request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'user-1@example.com',
+        password: 'password123456789',
+        name: 'User One',
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body).toEqual({ error: 'Password has been found in a data breach. Choose a different password.' });
+    expect(mocks.pwnedPasswordsMock).toHaveBeenCalledWith('password123456789');
+    expect(mocks.hashMock).not.toHaveBeenCalled();
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
   it('POST /api/auth/register returns 400 when user exists', async () => {
     const app = createTestApp();
 
@@ -258,6 +300,7 @@ describe('Auth Routes Integration', () => {
     const app = createTestApp();
 
     mocks.usersFindFirstMock.mockResolvedValueOnce(null);
+    mocks.redisGetMock.mockResolvedValueOnce(null);
 
     const res = await app.request('/api/auth/login', {
       method: 'POST',
@@ -276,6 +319,7 @@ describe('Auth Routes Integration', () => {
   it('POST /api/auth/login returns 401 for OAuth-only user', async () => {
     const app = createTestApp();
 
+    mocks.redisGetMock.mockResolvedValueOnce(null);
     mocks.usersFindFirstMock.mockResolvedValueOnce({
       id: 'oauth-user',
       email: 'oauth@example.com',
@@ -301,6 +345,7 @@ describe('Auth Routes Integration', () => {
   it('POST /api/auth/login returns 401 for invalid password', async () => {
     const app = createTestApp();
 
+    mocks.redisGetMock.mockResolvedValueOnce(null);
     mocks.usersFindFirstMock.mockResolvedValueOnce({
       id: 'user-1',
       email: 'user-1@example.com',
@@ -309,6 +354,7 @@ describe('Auth Routes Integration', () => {
       role: USER_ROLES.USER,
     });
     mocks.verifyMock.mockResolvedValueOnce(false);
+    mocks.redisIncrMock.mockResolvedValueOnce(1);
 
     const res = await app.request('/api/auth/login', {
       method: 'POST',
@@ -322,11 +368,73 @@ describe('Auth Routes Integration', () => {
 
     expect(res.status).toBe(401);
     expect(body).toEqual({ error: 'Invalid credentials' });
+    expect(mocks.redisIncrMock).toHaveBeenCalled();
+    expect(mocks.redisExpireMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^auth:login:failures:/),
+      AUTH_SECURITY.LOGIN_FAILED_ATTEMPTS_WINDOW_SECONDS,
+    );
+  });
+
+  it('POST /api/auth/login returns 429 after too many failed password attempts', async () => {
+    const app = createTestApp();
+
+    mocks.redisGetMock.mockResolvedValueOnce(null);
+    mocks.usersFindFirstMock.mockResolvedValueOnce({
+      id: 'user-1',
+      email: 'user-1@example.com',
+      password: 'hashed-password',
+      name: 'User One',
+      role: USER_ROLES.USER,
+    });
+    mocks.verifyMock.mockResolvedValueOnce(false);
+    mocks.redisIncrMock.mockResolvedValueOnce(AUTH_SECURITY.LOGIN_FAILED_ATTEMPTS_LIMIT);
+
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'user-1@example.com',
+        password: 'bad-password',
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(body).toEqual({ error: 'Too many login attempts. Please try again later.' });
+    expect(mocks.redisSetMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^auth:login:lock:/),
+      '1',
+      'EX',
+      AUTH_SECURITY.LOGIN_LOCK_SECONDS,
+    );
+    expect(mocks.redisDelMock).toHaveBeenCalled();
+  });
+
+  it('POST /api/auth/login returns 429 when the account is already locked', async () => {
+    const app = createTestApp();
+
+    mocks.redisGetMock.mockResolvedValueOnce('1');
+
+    const res = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'user-1@example.com',
+        password: 'bad-password',
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(body).toEqual({ error: 'Too many login attempts. Please try again later.' });
+    expect(mocks.usersFindFirstMock).not.toHaveBeenCalled();
+    expect(mocks.verifyMock).not.toHaveBeenCalled();
   });
 
   it('POST /api/auth/login returns 200 for valid credentials', async () => {
     const app = createTestApp();
 
+    mocks.redisGetMock.mockResolvedValueOnce(null);
     mocks.usersFindFirstMock.mockResolvedValueOnce({
       id: 'user-1',
       email: 'user-1@example.com',
@@ -608,6 +716,7 @@ describe('Auth Routes Integration', () => {
   it('POST /api/auth/login Failed login due to database error', async () => {
     const app = createTestApp();
 
+    mocks.redisGetMock.mockResolvedValueOnce(null);
     mocks.usersFindFirstMock.mockImplementationOnce(() => {
       throw new Error('Database error');
     });
