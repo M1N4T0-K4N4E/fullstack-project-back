@@ -23,7 +23,7 @@ COPY --from=builder /app/dist ./dist
 COPY drizzle ./drizzle
 COPY drizzle.config.ts ./
 
-RUN mkdir -p uploads/avatars uploads/banners logs
+RUN mkdir -p files/posts logs
 
 EXPOSE 3001
 CMD ["npm", "run", "start"]
