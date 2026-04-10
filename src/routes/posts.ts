@@ -29,7 +29,7 @@ const createPostSchema = z.object({
 })
 
 const updatePostSchema = z.object({
-  title: z.string().optional(),
+  title: z.string().max(100, 'Title must be 100 characters or less').optional(),
   context: z.string().optional(),
   vertex: z.string().optional(),
   fragment: z.string().optional(),
